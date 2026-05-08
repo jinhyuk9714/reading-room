@@ -521,7 +521,18 @@ describe("searchBooks", () => {
       }
 
       if (requestUrl.startsWith("https://openapi.naver.com/v1/search/book.json")) {
-        return Response.json({ items: [] });
+        return Response.json({
+          items: [
+            {
+              title:
+                "茅盾精選集 (與魯迅?列的新文學巨匠) (모순정선집 (여로신병열적신문학거장))",
+              author: "모순",
+              publisher: "중화서국",
+              isbn: "9624591234 9789624591231",
+              description: "중국 현대문학 작가 모순의 작품집.",
+            },
+          ],
+        });
       }
 
       if (requestUrl.startsWith("https://openlibrary.org/search.json")) {

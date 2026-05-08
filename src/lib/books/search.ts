@@ -249,7 +249,12 @@ function scoreBook(query: string, book: BookSearchResult): ScoredBook {
     score += 150;
   }
   if (authorMatches) {
-    score += likelyKoreanAuthorQuery ? 360 : titleExact || titleContains ? 70 : 90;
+    score +=
+      likelyKoreanAuthorQuery && !titleExact && !titleContains
+        ? 360
+        : titleExact || titleContains
+          ? 70
+          : 90;
   }
   if (normalizedQuery && joinedAuthors && normalizedQuery.includes(joinedAuthors)) {
     score += 40;
