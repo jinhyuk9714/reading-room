@@ -55,6 +55,11 @@ describe("getRecommendations", () => {
         title: "Pachinko",
         authors: ["Min Jin Lee"],
         reason: "Matched your request for \"family sagas\".",
+        reasonTags: ["검색 기반", "국내판 확인"],
+        matchScore: 73,
+        section: "now",
+        isFallback: true,
+        domesticVerified: true,
         source: "search-fallback",
         provider: "open-library",
         providerId: "OL262758W",
@@ -98,6 +103,11 @@ describe("getRecommendations", () => {
         title: "The Left Hand of Darkness",
         authors: ["Ursula K. Le Guin"],
         reason: "Matched your request for \"thoughtful science fiction\".",
+        reasonTags: ["검색 기반", "국내판 확인"],
+        matchScore: 73,
+        section: "now",
+        isFallback: true,
+        domesticVerified: true,
         source: "search-fallback",
         provider: "google",
         providerId: "google-left-hand",
@@ -199,6 +209,11 @@ describe("getRecommendations", () => {
         title: "Siddhartha",
         authors: ["Hermann Hesse"],
         reason: 'Matched your request for "Hermann Hesse".',
+        reasonTags: ["검색 기반", "비슷한 저자", "짧게 읽기", "국내판 확인"],
+        matchScore: 75,
+        section: "similar",
+        isFallback: true,
+        domesticVerified: true,
         source: "search-fallback",
         provider: "open-library",
         providerId: "siddhartha",
@@ -267,6 +282,11 @@ describe("getRecommendations", () => {
         title: "와일드 로봇의 노래",
         authors: ["베키 체임버스"],
         reason: "Gentle, hopeful science fiction with reflective pacing.",
+        reasonTags: ["AI 추천", "국내판 확인"],
+        matchScore: 88,
+        section: "now",
+        isFallback: false,
+        domesticVerified: true,
         source: "openai",
         provider: "google",
         providerId: "google-psalm-ko",
@@ -274,5 +294,169 @@ describe("getRecommendations", () => {
         pageCount: 160,
       },
     ]);
+  });
+
+  it("supports purpose recommendations with intent-aware search and sections", async () => {
+    delete process.env.OPENAI_API_KEY;
+    searchBooksMock.mockResolvedValueOnce([
+      {
+        provider: "kakao",
+        providerId: "short-calm",
+        title: "아주 작은 독서",
+        subtitle: null,
+        authors: ["정온"],
+        isbn10: null,
+        isbn13: "9790000000001",
+        coverUrl: null,
+        pageCount: 168,
+        publishedYear: 2025,
+        language: "kor",
+        description: "잔잔한 밤 독서에 맞는 짧은 에세이",
+        raw: {},
+      },
+    ]);
+
+    const results = await getRecommendations("서재 기반 추천", {
+      limit: 1,
+      mode: "purpose",
+      intent: {
+        mood: "calm",
+        length: "short",
+        difficulty: "easy",
+        genres: ["에세이"],
+        purpose: "잠들기 전",
+      },
+    });
+
+    expect(searchBooksMock).toHaveBeenCalledWith(
+      "잔잔한 짧은 쉬운 에세이 잠들기 전",
+      { limit: 1, market: "kr" },
+    );
+    expect(results[0]).toMatchObject({
+      title: "아주 작은 독서",
+      section: "short",
+      reasonTags: ["목적별", "짧게 읽기", "국내판 확인"],
+      isFallback: true,
+      domesticVerified: true,
+    });
+  });
+
+  it("excludes hidden and previously shown provider ids from conversation results", async () => {
+    delete process.env.OPENAI_API_KEY;
+    searchBooksMock.mockResolvedValueOnce([
+      {
+        provider: "kakao",
+        providerId: "skip-me",
+        title: "이미 본 책",
+        subtitle: null,
+        authors: ["작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 220,
+        publishedYear: 2022,
+        language: "kor",
+        description: null,
+        raw: {},
+      },
+      {
+        provider: "kakao",
+        providerId: "next-book",
+        title: "다음 책",
+        subtitle: null,
+        authors: ["작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 320,
+        publishedYear: 2023,
+        language: "kor",
+        description: null,
+        raw: {},
+      },
+    ]);
+
+    const results = await getRecommendations("더 깊게", {
+      limit: 1,
+      mode: "conversation",
+      previousProviderIds: ["kakao:skip-me"],
+      hiddenProviderIds: ["kakao:hidden"],
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      providerId: "next-book",
+      section: "conversation",
+      reasonTags: ["대화형 탐색", "국내판 확인"],
+    });
+  });
+
+  it("honors mode and provider-id exclusions embedded in a recommendation context query", async () => {
+    delete process.env.OPENAI_API_KEY;
+    searchBooksMock.mockResolvedValueOnce([
+      {
+        provider: "kakao",
+        providerId: "hidden-book",
+        title: "숨김 책",
+        subtitle: null,
+        authors: ["작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 210,
+        publishedYear: 2021,
+        language: "kor",
+        description: null,
+        raw: {},
+      },
+      {
+        provider: "naver",
+        providerId: "blocked-book",
+        title: "제외 책",
+        subtitle: null,
+        authors: ["작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 260,
+        publishedYear: 2022,
+        language: "kor",
+        description: null,
+        raw: {},
+      },
+      {
+        provider: "kakao",
+        providerId: "kept-book",
+        title: "이어 읽는 책",
+        subtitle: null,
+        authors: ["작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 240,
+        publishedYear: 2023,
+        language: "kor",
+        description: null,
+        raw: {},
+      },
+    ]);
+
+    const query = [
+      "Recommend books for a Korean personal reading room app.",
+      "Recommendation mode: conversation.",
+      "Hidden provider IDs: kakao:hidden-book",
+      "Excluded provider IDs: naver:blocked-book",
+      "Conversation context:",
+      "- continue the earlier thread",
+    ].join("\n");
+
+    const results = await getRecommendations(query, { limit: 1 });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      providerId: "kept-book",
+      section: "conversation",
+      reasonTags: ["대화형 탐색", "국내판 확인"],
+    });
   });
 });

@@ -48,6 +48,7 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { isReadingStatus } from "@/lib/library/validation";
 
 const STORAGE_KEY = "reading-room-demo-v1";
+const HIDDEN_RECOMMENDATIONS_KEY = "reading-room-demo-hidden-recommendations-v1";
 const DEMO_USER_ID = "demo-user";
 
 type DemoReadingRoomProps = {
@@ -65,6 +66,8 @@ type DemoState = {
   items: LibraryItemWithBook[];
   logs: ReadingLog[];
 };
+
+type DemoRecommendationPurpose = "auto" | "short" | "deep" | "explore";
 
 const emptyState: DemoState = {
   items: [],
@@ -1302,7 +1305,25 @@ function RecommendationsView({
   items: LibraryItemWithBook[];
   onAddRecommendation: (card: RecommendationCard) => void;
 }) {
-  const cards = createDemoRecommendations(items);
+  const [purpose, setPurpose] = useState<DemoRecommendationPurpose>("auto");
+  const [hiddenKeys, setHiddenKeys] = useState<string[]>(() =>
+    readHiddenRecommendationKeys(),
+  );
+  const cards = createDemoRecommendations(items, purpose).filter(
+    (card) => !hiddenKeys.includes(recommendationKey(card)),
+  );
+
+  function hideRecommendation(card: RecommendationCard) {
+    const key = recommendationKey(card);
+    setHiddenKeys((current) => {
+      const next = [...new Set([...current, key])];
+      window.localStorage.setItem(
+        HIDDEN_RECOMMENDATIONS_KEY,
+        JSON.stringify(next),
+      );
+      return next;
+    });
+  }
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-5 text-[var(--color-ink)] md:px-8">
@@ -1325,49 +1346,100 @@ function RecommendationsView({
         </header>
 
         <Panel title="추천 도서">
-          <div className="mb-4 flex size-10 items-center justify-center rounded-md bg-[var(--color-soft)] text-[var(--color-forest)]">
-            <Lightbulb className="size-5" />
-          </div>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {cards.map((card) => (
-              <article
-                className="rounded-md border border-[var(--color-line)] bg-white/70 p-3"
-                key={`${card.provider}:${card.providerId}`}
-              >
-                <div className="flex gap-3">
-                  <BookCover
-                    authors={card.authors}
-                    className="w-24 shrink-0"
-                    coverUrl={card.coverUrl}
-                    title={card.title}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <h3 className="line-clamp-2 font-semibold">{card.title}</h3>
-                    <p className="mt-1 line-clamp-1 text-sm text-[var(--color-muted)]">
-                      {formatAuthors(card.authors)}
-                    </p>
-                    <p className="mt-2 text-xs text-[var(--color-muted)]">
-                      {card.pageCount ? `${card.pageCount}쪽 · ` : ""}
-                      로컬 추천
-                    </p>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
-                  {card.reason}
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-md bg-[var(--color-soft)] text-[var(--color-forest)]">
+                <Lightbulb className="size-5" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-[var(--color-forest)]">
+                  로컬 추천 피드
                 </p>
+                <p className="text-sm text-[var(--color-muted)]">
+                  목적을 바꾸면 데모에서도 후보가 즉시 갱신됩니다.
+                </p>
+              </div>
+            </div>
+            <div
+              aria-label="추천 목적"
+              className="flex flex-wrap gap-2"
+              role="group"
+            >
+              {[
+                ["auto", "자동"],
+                ["short", "짧게 완독"],
+                ["deep", "깊이 읽기"],
+                ["explore", "새로운 결"],
+              ].map(([value, label]) => (
                 <Button
-                  className="mt-3"
-                  onClick={() => onAddRecommendation(card)}
+                  key={value}
+                  onClick={() => setPurpose(value as DemoRecommendationPurpose)}
                   size="sm"
                   type="button"
-                  variant="secondary"
+                  variant={purpose === value ? "primary" : "secondary"}
                 >
-                  <BookPlus className="size-4" />
-                  서재에 추가
+                  {label}
                 </Button>
-              </article>
-            ))}
+              ))}
+            </div>
           </div>
+          {cards.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {cards.map((card) => (
+                <article
+                  className="rounded-md border border-[var(--color-line)] bg-white/70 p-3"
+                  key={`${card.provider}:${card.providerId}`}
+                >
+                  <div className="flex gap-3">
+                    <BookCover
+                      authors={card.authors}
+                      className="w-24 shrink-0"
+                      coverUrl={card.coverUrl}
+                      title={card.title}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="line-clamp-2 font-semibold">
+                        {card.title}
+                      </h3>
+                      <p className="mt-1 line-clamp-1 text-sm text-[var(--color-muted)]">
+                        {formatAuthors(card.authors)}
+                      </p>
+                      <p className="mt-2 text-xs text-[var(--color-muted)]">
+                        {card.pageCount ? `${card.pageCount}쪽 · ` : ""}
+                        로컬 추천 · {card.matchScore ?? 72}% 적합
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
+                    {card.reason}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => onAddRecommendation(card)}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      <BookPlus className="size-4" />
+                      서재에 추가
+                    </Button>
+                    <Button
+                      onClick={() => hideRecommendation(card)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      이 책 제외
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-[var(--color-line)] bg-white/70 p-4 text-sm leading-6 text-[var(--color-muted)]">
+              이 조건의 추천을 모두 제외했습니다. 다른 목적을 선택하면 새 후보를 볼 수 있습니다.
+            </div>
+          )}
         </Panel>
       </div>
     </main>
@@ -1376,37 +1448,94 @@ function RecommendationsView({
 
 function createDemoRecommendations(
   items: LibraryItemWithBook[],
+  purpose: DemoRecommendationPurpose = "auto",
 ): RecommendationCard[] {
   const visibleItems = items.filter((item) => item.status !== "abandoned");
   const anchor = visibleItems[0];
   const second = visibleItems[1];
+  const label = {
+    auto: "자동 추천",
+    short: "짧은 추천",
+    deep: "깊은 추천",
+    explore: "탐색 추천",
+  } satisfies Record<DemoRecommendationPurpose, string>;
+  const title = {
+    auto: "추천 도서",
+    short: "짧은 밤의 책",
+    deep: "깊이 읽는 책",
+    explore: "낯선 장르 산책",
+  } satisfies Record<DemoRecommendationPurpose, string>;
+  const sideTitle = {
+    auto: "추천 산책",
+    short: "가볍게 완독",
+    deep: "긴 호흡의 질문",
+    explore: "새로운 결",
+  } satisfies Record<DemoRecommendationPurpose, string>;
+  const firstSection =
+    purpose === "short" ? "short" : purpose === "explore" ? "expand" : "purpose";
 
   return [
     {
-      title: "추천 도서",
+      title: title[purpose],
       authors: anchor?.book.authors.length ? anchor.book.authors : ["Reading Room"],
       reason: anchor
         ? `${anchor.book.title}${
             second ? `, ${second.book.title}` : ""
-          }의 결을 이어서 다음 기록으로 남기기 좋은 책입니다.`
-        : "첫 독서 기록을 시작하기 좋은 조용한 추천입니다.",
+          }의 결을 이어서 ${label[purpose]}으로 남기기 좋은 책입니다.`
+        : `첫 독서 기록을 시작하기 좋은 ${label[purpose]}입니다.`,
+      reasonTags: [label[purpose], "국내판 확인"],
+      matchScore: purpose === "auto" ? 78 : 84,
+      section: firstSection,
+      isFallback: true,
+      domesticVerified: true,
       source: "local-demo",
       provider: "manual",
-      providerId: `demo-recommendation-${anchor?.book.id ?? "starter"}`,
+      providerId: `demo-recommendation-${purpose}-${anchor?.book.id ?? "starter"}`,
       coverUrl: null,
-      pageCount: anchor?.book.pageCount ?? 220,
+      pageCount: purpose === "short" ? 164 : (anchor?.book.pageCount ?? 220),
     },
     {
-      title: "추천 산책",
+      title: sideTitle[purpose],
       authors: ["Reading Room"],
-      reason: "최근 읽은 책의 속도와 메모량을 기준으로 부담 없이 이어갈 수 있는 후보입니다.",
+      reason:
+        purpose === "deep"
+          ? "최근 기록의 질문을 더 깊게 이어갈 수 있도록 긴 호흡의 후보를 골랐습니다."
+          : purpose === "explore"
+            ? "서재에 아직 적은 결을 넓히기 위한 국내판 탐색 후보입니다."
+            : "최근 읽은 책의 속도와 메모량을 기준으로 부담 없이 이어갈 수 있는 후보입니다.",
+      reasonTags: [label[purpose], "로컬 피드", "국내판 확인"],
+      matchScore: purpose === "auto" ? 72 : 80,
+      section: purpose === "explore" ? "expand" : purpose === "short" ? "short" : "now",
+      isFallback: true,
+      domesticVerified: true,
       source: "local-demo",
       provider: "manual",
-      providerId: "demo-recommendation-walk",
+      providerId: `demo-recommendation-${purpose}-walk`,
       coverUrl: null,
-      pageCount: 180,
+      pageCount: purpose === "deep" ? 360 : 180,
     },
   ];
+}
+
+function readHiddenRecommendationKeys() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(HIDDEN_RECOMMENDATIONS_KEY) ?? "[]",
+    ) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function recommendationKey(card: RecommendationCard) {
+  return `${card.provider}:${card.providerId}`;
 }
 
 function MissingItemView() {

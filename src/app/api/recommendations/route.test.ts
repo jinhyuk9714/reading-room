@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 
 vi.mock("@/lib/recommendations/recommendations", () => ({
   getRecommendations: vi.fn(),
+  recommendationQueryFromIntent: vi.fn(() => "잔잔한 짧은 쉬운 에세이 잠들기 전"),
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
@@ -27,7 +28,7 @@ function mockUser(user: { id: string } | null) {
 
 describe("POST /api/recommendations", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("returns recommendation cards as JSON", async () => {
@@ -37,6 +38,11 @@ describe("POST /api/recommendations", () => {
         title: "Pachinko",
         authors: ["Min Jin Lee"],
         reason: "Sweeping family saga.",
+        reasonTags: ["검색 기반", "국내판 확인"],
+        matchScore: 73,
+        section: "now",
+        isFallback: true,
+        domesticVerified: true,
         source: "search-fallback",
         provider: "open-library",
         providerId: "OL262758W",
@@ -59,6 +65,11 @@ describe("POST /api/recommendations", () => {
           title: "Pachinko",
           authors: ["Min Jin Lee"],
           reason: "Sweeping family saga.",
+          reasonTags: ["검색 기반", "국내판 확인"],
+          matchScore: 73,
+          section: "now",
+          isFallback: true,
+          domesticVerified: true,
           source: "search-fallback",
           provider: "open-library",
           providerId: "OL262758W",
@@ -69,7 +80,52 @@ describe("POST /api/recommendations", () => {
     });
     expect(getRecommendationsMock).toHaveBeenCalledWith("family sagas", {
       limit: 1,
+      mode: "feed",
+      intent: undefined,
+      previousProviderIds: [],
+      hiddenProviderIds: [],
     });
+  });
+
+  it("supports structured purpose recommendation requests without a legacy query", async () => {
+    mockUser({ id: "user-1" });
+    getRecommendationsMock.mockResolvedValueOnce([]);
+
+    const response = await POST(
+      new Request("https://example.com/api/recommendations", {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "purpose",
+          intent: {
+            mood: "calm",
+            length: "short",
+            difficulty: "easy",
+            genres: ["에세이"],
+            purpose: "잠들기 전",
+          },
+          previousProviderIds: ["kakao:already-seen"],
+          limit: 3,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(getRecommendationsMock).toHaveBeenCalledWith(
+      "잔잔한 짧은 쉬운 에세이 잠들기 전",
+      {
+        limit: 3,
+        mode: "purpose",
+        intent: {
+          mood: "calm",
+          length: "short",
+          difficulty: "easy",
+          genres: ["에세이"],
+          purpose: "잠들기 전",
+        },
+        previousProviderIds: ["kakao:already-seen"],
+        hiddenProviderIds: [],
+      },
+    );
   });
 
   it("requires an authenticated user before generating recommendations", async () => {
