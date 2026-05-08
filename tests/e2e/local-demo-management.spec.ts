@@ -119,7 +119,27 @@ test.describe("local demo reading room management acceptance", () => {
 
     const archiveButton = page.getByRole("button", { name: /보관|아카이브/i });
     await expect(archiveButton).toBeVisible({ timeout: 5_000 });
+    let dismissedArchiveMessage = "";
+    page.once("dialog", async (dialog) => {
+      dismissedArchiveMessage = dialog.message();
+      await dialog.dismiss();
+    });
     await archiveButton.click();
+    await expect
+      .poll(() => dismissedArchiveMessage, { timeout: 3_000 })
+      .toContain("보관함");
+    await expect(page).toHaveURL(new RegExp(`/library/${DEMO_ITEM_ID}$`));
+    await expect(page.getByRole("heading", { name: "원본 제목" })).toBeVisible();
+
+    let acceptedArchiveMessage = "";
+    page.once("dialog", async (dialog) => {
+      acceptedArchiveMessage = dialog.message();
+      await dialog.accept();
+    });
+    await archiveButton.click();
+    await expect
+      .poll(() => acceptedArchiveMessage, { timeout: 3_000 })
+      .toContain("보관함");
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByText("원본 제목")).not.toBeVisible();
 
@@ -135,7 +155,15 @@ test.describe("local demo reading room management acceptance", () => {
     await expect(page.getByText("원본 제목").first()).toBeVisible();
 
     await page.goto(`/library/${DEMO_ITEM_ID}`, { waitUntil: "domcontentloaded" });
+    let secondArchiveMessage = "";
+    page.once("dialog", async (dialog) => {
+      secondArchiveMessage = dialog.message();
+      await dialog.accept();
+    });
     await page.getByRole("button", { name: /보관|아카이브/i }).click();
+    await expect
+      .poll(() => secondArchiveMessage, { timeout: 3_000 })
+      .toContain("보관함");
     await page.getByRole("link", { name: /보관함|아카이브/i }).click();
 
     page.once("dialog", (dialog) => dialog.accept());

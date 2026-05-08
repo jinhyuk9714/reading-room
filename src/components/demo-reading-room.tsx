@@ -958,12 +958,20 @@ function DetailView({
             <Button
               className="w-full"
               disabled={!ready}
-              onClick={onArchive}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "이 책을 보관함으로 이동할까요? 독서장에서는 숨겨지고 보관함에서 복원할 수 있습니다.",
+                  )
+                ) {
+                  onArchive();
+                }
+              }}
               type="button"
               variant="secondary"
             >
               <Archive className="size-4" />
-              보관
+              보관함으로 이동
             </Button>
             <Button
               className="w-full"

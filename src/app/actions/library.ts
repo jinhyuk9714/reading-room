@@ -667,7 +667,7 @@ export async function archiveLibraryItemAction(
   }
 
   revalidateReadingRoom(itemId);
-  return actionSuccess("책을 보관했습니다.");
+  return actionSuccess("책을 보관함으로 이동했습니다.");
 }
 
 export async function restoreLibraryItemAction(

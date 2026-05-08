@@ -260,7 +260,18 @@ function DangerZone({ itemId }: { itemId: string }) {
 
   return (
     <section className="mt-5 grid gap-2">
-      <form action={archiveAction}>
+      <form
+        action={archiveAction}
+        onSubmit={(event) => {
+          if (
+            !window.confirm(
+              "이 책을 보관함으로 이동할까요? 독서장에서는 숨겨지고 보관함에서 복원할 수 있습니다.",
+            )
+          ) {
+            event.preventDefault();
+          }
+        }}
+      >
         <input name="libraryItemId" type="hidden" value={itemId} />
         <Button
           className="w-full"
@@ -269,7 +280,7 @@ function DangerZone({ itemId }: { itemId: string }) {
           variant="secondary"
         >
           <Archive className="size-4" />
-          {archivePending ? "보관 중" : "보관"}
+          {archivePending ? "보관 중" : "보관함으로 이동"}
         </Button>
       </form>
       <form
