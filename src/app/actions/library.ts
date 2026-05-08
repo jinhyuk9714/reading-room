@@ -100,7 +100,7 @@ function actionErrorMessage(error: unknown) {
 }
 
 function revalidateReadingRoom(itemId?: string | null) {
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   revalidatePath("/archive");
   revalidatePath("/rankings");
   revalidatePath("/recommendations");
