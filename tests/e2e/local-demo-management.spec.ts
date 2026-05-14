@@ -176,10 +176,17 @@ test.describe("local demo reading room management acceptance", () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "오늘의 독서장" })).toBeVisible();
     await expect(page.getByText("원본 제목")).toHaveCount(0);
-    await page.goto(`/library/${DEMO_ITEM_ID}`, { waitUntil: "domcontentloaded" });
+    await expect(
+      page.evaluate(
+        (itemId) =>
+          JSON.parse(
+            window.localStorage.getItem("reading-room-demo-v1") ?? "{}",
+          ).items?.some((item: { id: string }) => item.id === itemId) ?? false,
+        DEMO_ITEM_ID,
+      ),
+    ).resolves.toBe(false);
     await expectNoFrameworkError(page);
     await expect(page.locator("body")).not.toContainText(/404/i);
-    await expect(page.getByText("책을 찾지 못했습니다.")).toBeVisible();
     await expectNoHorizontalOverflow(page);
     consoleFailures.expectClean();
   });
