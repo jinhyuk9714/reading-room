@@ -50,6 +50,16 @@ function stringOrNull(value: FormDataEntryValue | null): string | null {
   return trimmed ? trimmed : null;
 }
 
+function safeRedirectPath(value: FormDataEntryValue | null) {
+  const path = stringOrNull(value);
+
+  if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) {
+    return null;
+  }
+
+  return path;
+}
+
 function parseTags(value: FormDataEntryValue | null): string[] {
   if (typeof value !== "string") {
     return [];
@@ -779,6 +789,11 @@ export async function archiveLibraryItemAction(
   }
 
   revalidateReadingRoom(itemId);
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"));
+  if (redirectTo) {
+    redirect(redirectTo);
+  }
+
   return actionSuccess("책을 보관함으로 이동했습니다.");
 }
 
@@ -833,5 +848,10 @@ export async function deleteLibraryItemAction(
   }
 
   revalidateReadingRoom(itemId);
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"));
+  if (redirectTo) {
+    redirect(redirectTo);
+  }
+
   return actionSuccess("책을 삭제했습니다.");
 }

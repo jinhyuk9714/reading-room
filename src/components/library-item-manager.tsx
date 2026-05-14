@@ -286,6 +286,7 @@ function DangerZone({ itemId }: { itemId: string }) {
             title="이 책을 보관할까요?"
           >
             <input name="libraryItemId" type="hidden" value={itemId} />
+            <input name="redirectTo" type="hidden" value="/" />
           </ConfirmPanel>
         </form>
       ) : (
@@ -310,6 +311,7 @@ function DangerZone({ itemId }: { itemId: string }) {
             title="이 책을 삭제할까요?"
           >
             <input name="libraryItemId" type="hidden" value={itemId} />
+            <input name="redirectTo" type="hidden" value="/" />
           </ConfirmPanel>
         </form>
       ) : (

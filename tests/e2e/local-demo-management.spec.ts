@@ -161,6 +161,29 @@ test.describe("local demo reading room management acceptance", () => {
     consoleFailures.expectClean();
   });
 
+  test("deletes a library item from detail without leaving a 404 route", async ({
+    page,
+  }) => {
+    const consoleFailures = collectConsoleFailures(page);
+    await seedAndOpen(page, seededLibraryState(), `/library/${DEMO_ITEM_ID}`);
+
+    await page.getByRole("button", { name: /영구 삭제/i }).click();
+    await expect(
+      page.getByRole("dialog", { name: /책 영구 삭제/i }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: /삭제 확인/i }).click();
+
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { name: "오늘의 독서장" })).toBeVisible();
+    await expect(page.getByText("원본 제목")).toHaveCount(0);
+    await page.goto(`/library/${DEMO_ITEM_ID}`, { waitUntil: "domcontentloaded" });
+    await expectNoFrameworkError(page);
+    await expect(page.locator("body")).not.toContainText(/404/i);
+    await expect(page.getByText("책을 찾지 못했습니다.")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    consoleFailures.expectClean();
+  });
+
   test("shows demo rankings based on local reading history", async ({ page }) => {
     const consoleFailures = collectConsoleFailures(page);
     await seedAndOpen(page, seededLibraryState(), "/rankings");

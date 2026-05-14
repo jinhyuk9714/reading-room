@@ -183,4 +183,31 @@ describe("library actions", () => {
       }),
     });
   });
+
+  it("redirects away from a deleted detail page before the route can render 404", async () => {
+    const { deleteLibraryItemAction } = await import("@/app/actions/library");
+    const formData = new FormData();
+    formData.set("libraryItemId", "item-1");
+    formData.set("redirectTo", "/");
+
+    await expect(
+      deleteLibraryItemAction({ status: "idle", message: "" }, formData),
+    ).rejects.toThrow("NEXT_REDIRECT:/");
+
+    expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
+    expect(revalidatePath).toHaveBeenCalledWith("/library/item-1");
+  });
+
+  it("keeps archive-page deletes inline when no redirect target is provided", async () => {
+    const { deleteLibraryItemAction } = await import("@/app/actions/library");
+    const formData = new FormData();
+    formData.set("libraryItemId", "item-1");
+
+    await expect(
+      deleteLibraryItemAction({ status: "idle", message: "" }, formData),
+    ).resolves.toMatchObject({
+      status: "success",
+      message: "책을 삭제했습니다.",
+    });
+  });
 });
