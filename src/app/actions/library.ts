@@ -50,6 +50,17 @@ function stringOrNull(value: FormDataEntryValue | null): string | null {
   return trimmed ? trimmed : null;
 }
 
+function parseTags(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
 function parseAuthors(value: FormDataEntryValue | null): string[] {
   if (typeof value !== "string") {
     return [];
@@ -97,6 +108,12 @@ function actionErrorMessage(error: unknown) {
   }
 
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.";
+}
+
+function quoteValidationError(quote: string | null) {
+  return (quote?.length ?? 0) > 1000
+    ? "인용문은 1000자 이내로 남겨주세요."
+    : null;
 }
 
 function revalidateReadingRoom(itemId?: string | null) {
@@ -409,9 +426,17 @@ export async function addReadingLogAction(
   const currentPercent = numberOrNull(formData.get("currentPercent"));
   const pagesRead = numberOrNull(formData.get("pagesRead"));
   const note = stringOrNull(formData.get("note"));
+  const quote = stringOrNull(formData.get("quote"));
+  const tags = parseTags(formData.get("tags"));
+  const mood = stringOrNull(formData.get("mood"));
 
   if (!itemId) {
     return actionError("기록할 책을 찾지 못했습니다.");
+  }
+
+  const quoteError = quoteValidationError(quote);
+  if (quoteError) {
+    return actionError(quoteError);
   }
 
   const validation = validateReadingLog({
@@ -433,6 +458,9 @@ export async function addReadingLogAction(
     current_percent: currentPercent,
     pages_read: pagesRead,
     note,
+    quote,
+    tags,
+    mood,
   });
 
   if (logError) {
@@ -467,9 +495,17 @@ export async function updateReadingLogAction(
   const currentPercent = numberOrNull(formData.get("currentPercent"));
   const pagesRead = numberOrNull(formData.get("pagesRead"));
   const note = stringOrNull(formData.get("note"));
+  const quote = stringOrNull(formData.get("quote"));
+  const tags = parseTags(formData.get("tags"));
+  const mood = stringOrNull(formData.get("mood"));
 
   if (!itemId || !logId) {
     return actionError("수정할 기록을 찾지 못했습니다.");
+  }
+
+  const quoteError = quoteValidationError(quote);
+  if (quoteError) {
+    return actionError(quoteError);
   }
 
   const validation = validateReadingLog({
@@ -491,6 +527,9 @@ export async function updateReadingLogAction(
       current_percent: currentPercent,
       pages_read: pagesRead,
       note,
+      quote,
+      tags,
+      mood,
     })
     .eq("id", logId)
     .eq("library_item_id", itemId)

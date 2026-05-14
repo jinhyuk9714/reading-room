@@ -71,4 +71,18 @@ describe("buildRecommendationQuery", () => {
     expect(query).toContain("- Visible Book by Visible Author");
     expect(query).not.toContain("Abandoned Book");
   });
+
+  it("includes reader preference intent fields when provided", () => {
+    const query = buildRecommendationQuery([libraryItem()], emptyRankings, {
+      mode: "purpose",
+      intent: {
+        daily_page_goal: 25,
+        default_log_mode: "pages",
+      },
+    });
+
+    expect(query).toContain(
+      "Recommendation intent: daily_page_goal=25; default_log_mode=pages",
+    );
+  });
 });

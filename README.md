@@ -1,6 +1,6 @@
 # Reading Room
 
-Reading Room is a Next.js 16 app for tracking a personal library, reading progress, reflections, and book search. The production path is Vercel for the web app and Supabase for auth, database, and row-level security.
+Reading Room is a Next.js 16 personal reading OS for tracking a library, reading progress, reflections, recommendations, rankings, and reading insights. The production path is Vercel for the web app and Supabase for auth, database, and row-level security.
 
 ## Requirements
 
@@ -23,6 +23,26 @@ npm run dev
 Open `http://localhost:3000`.
 
 The app can render a setup/demo state without Supabase values. Cloud persistence requires Supabase, and Google sign-in becomes available after the OAuth setup below.
+
+## Reading OS v2
+
+The no-env demo and authenticated app are expected to cover the core reading OS routes:
+
+- `/` home cockpit with active reading, quick progress logging, status workspaces, recent logs, and local insight counters.
+- `/search` book search and manual add.
+- `/library/[id]` book detail with metadata editing, status changes, reading log editing, archiving, and deletion.
+- `/archive` archived books with restore and delete actions.
+- `/rankings` local or anonymous ranking fallback.
+- `/recommendations` recommendation discovery with purpose switching and dismiss/add regression coverage.
+- `/insights` reading insight fallback for local demo data, including status totals, page totals, tags, moods, quotes, and reflections.
+
+Demo state is stored in `localStorage` under `reading-room-demo-v1`. OS v2 reading logs add:
+
+- `quote: string | null`
+- `tags: string[]`
+- `mood: string | null`
+
+Older seeded demo states that only include `note`, page progress, and `pagesRead` are normalized in the demo UI so existing localStorage fixtures keep working.
 
 ## Environment
 
@@ -125,6 +145,14 @@ npm run test
 npm run build
 npm run e2e
 npm run db:test
+```
+
+Final demo/QA verification for OS v2 parity:
+
+```bash
+npm run typecheck
+npx playwright test tests/e2e/demo-flow.spec.ts tests/e2e/local-demo-management.spec.ts tests/e2e/recommendations-discovery.spec.ts --project=chromium-desktop
+npm run e2e
 ```
 
 GitHub Actions runs the same checks on pull requests and pushes to `main`. The e2e configuration intentionally runs with empty Supabase public values so unauthenticated setup/login flows remain testable in CI.

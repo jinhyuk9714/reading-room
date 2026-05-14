@@ -1,22 +1,18 @@
-import {
-  BookMarked,
-  CalendarDays,
-  Library,
-  LogOut,
-  Plus,
-} from "lucide-react";
+import { BarChart3, BookOpen, CalendarDays, CheckCircle2, Plus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { signOut } from "@/app/actions/auth";
 import { DemoReadingRoom } from "@/components/demo-reading-room";
-import { BookCover } from "@/components/ui/book-cover";
-import { Button, ButtonLink } from "@/components/ui/button";
-import { ProgressBar } from "@/components/ui/progress-bar";
-import { getReadingRoom } from "@/lib/library/queries";
-import { calculateProgress } from "@/lib/reading/progress";
-import { createClient } from "@/lib/supabase/server";
-import { formatAuthors, formatDate } from "@/lib/utils";
+import { AppShell } from "@/components/ui/app-shell";
+import { BookCard } from "@/components/ui/book-card";
+import { ButtonLink } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { MetricStrip } from "@/components/ui/metric-strip";
+import { PageHeader } from "@/components/ui/page-header";
 import { hasSupabaseEnv } from "@/lib/env";
+import { getReadingRoom } from "@/lib/library/queries";
+import type { ReadingLog } from "@/lib/reading/types";
+import { createClient } from "@/lib/supabase/server";
+import { formatDate } from "@/lib/utils";
 
 export default async function Home() {
   if (!hasSupabaseEnv()) {
@@ -32,139 +28,158 @@ export default async function Home() {
     redirect("/login");
   }
 
-  const { items, summary } = await getReadingRoom(user.id);
-  const visibleItems = items.filter((item) => item.status !== "abandoned");
+  const { items, logs, summary } = await getReadingRoom(user.id);
+  const currentlyReading = summary.currentlyReading.slice(0, 4);
+  const primaryBook = currentlyReading[0];
+  const wantToRead = items
+    .filter((item) => item.status === "want_to_read")
+    .slice(0, 5);
+  const recentNotes = logs.filter((log) => log.note?.trim()).slice(0, 4);
+  const visibleCount = items.filter((item) => item.status !== "abandoned").length;
+  const streakDays = calculateReadingStreak(logs);
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-4 py-5 text-[var(--color-ink)] md:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5">
-        <header className="flex flex-col gap-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm text-[var(--color-muted)]">
-              Reading Room
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-              오늘의 독서장
-            </h1>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <ButtonLink href="/search" variant="primary">
-              <Plus className="size-4" />
-              책 추가
-            </ButtonLink>
-            <ButtonLink href="/rankings" variant="secondary">
-              랭킹
-            </ButtonLink>
-            <ButtonLink href="/recommendations" variant="secondary">
-              추천
-            </ButtonLink>
-            <ButtonLink href="/archive" variant="ghost">
-              보관함
-            </ButtonLink>
-            <form action={signOut}>
-              <Button type="submit" variant="ghost">
-                <LogOut className="size-4" />
-                로그아웃
-              </Button>
-            </form>
-          </div>
-        </header>
-
-        <section className="grid gap-3 md:grid-cols-3">
-          <StatCard
-            icon={<BookMarked className="size-5" />}
-            label="읽는 중"
-            value={`${summary.activeCount}권`}
-          />
-          <StatCard
-            icon={<Library className="size-5" />}
-            label="완독"
-            value={`${summary.finishedCount}권`}
-          />
-          <StatCard
-            icon={<CalendarDays className="size-5" />}
-            label="최근 7일"
-            value={`${summary.weeklyPages}쪽`}
-          />
-        </section>
-
-        <section className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:p-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold">지금 읽는 책</h2>
-              <ButtonLink href="/search" size="sm" variant="secondary">
-                검색
+    <AppShell activeHref="/">
+      <div className="flex flex-col gap-4">
+        <PageHeader
+          actions={
+            <>
+              <ButtonLink href="/search" size="sm" variant="primary">
+                <Plus className="size-4" />
+                책 추가
               </ButtonLink>
-            </div>
+              <ButtonLink href="/recommendations" size="sm" variant="secondary">
+                추천 보기
+              </ButtonLink>
+            </>
+          }
+          meta={`${visibleCount}권 · 최근 기록 ${summary.recentLogs.length}개`}
+          title="오늘의 독서장"
+        />
 
-            {summary.currentlyReading.length === 0 ? (
+        <MetricStrip
+          items={[
+            {
+              label: "이번 주",
+              value: `${summary.weeklyPages}쪽`,
+              detail: "최근 7일",
+              icon: <CalendarDays className="size-4" />,
+            },
+            {
+              label: "연속 기록",
+              value: `${streakDays}일`,
+              detail: streakDays > 0 ? "오늘 기준" : "이번 주 기록 없음",
+              icon: <BookOpen className="size-4" />,
+            },
+            {
+              label: "완독",
+              value: `${summary.finishedCount}권`,
+              detail: "전체 누적",
+              icon: <CheckCircle2 className="size-4" />,
+            },
+            {
+              label: "읽는 중",
+              value: `${summary.activeCount}권`,
+              detail:
+                summary.pausedCount > 0 ? `멈춘 책 ${summary.pausedCount}권` : "진행 중",
+              icon: <BarChart3 className="size-4" />,
+            },
+          ]}
+        />
+
+        <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="rounded-md border border-[var(--color-line)] bg-white/35 p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">이어 읽기</h2>
+              {primaryBook ? (
+                <ButtonLink
+                  href={`/library/${primaryBook.id}`}
+                  size="sm"
+                  variant="secondary"
+                >
+                  1분 기록
+                </ButtonLink>
+              ) : null}
+            </div>
+            {currentlyReading.length === 0 ? (
               <EmptyState
-                title="아직 읽는 중인 책이 없습니다."
-                body="책을 하나 추가하면 첫 기록을 바로 남길 수 있어요."
+                action={
+                  <ButtonLink href="/search" size="sm" variant="secondary">
+                    책 찾기
+                  </ButtonLink>
+                }
+                body="읽는 중 상태로 책을 추가하면 이곳에서 바로 기록할 수 있습니다."
+                title="오늘 이어 읽을 책이 없습니다."
               />
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {summary.currentlyReading.map((item) => {
-                  const progress =
-                    item.currentPercent ??
-                    calculateProgress({
-                      currentPage: item.currentPage,
-                      pageCount: item.book.pageCount,
-                    });
-
-                  return (
-                    <Link
-                      className="rounded-md border border-[var(--color-line)] bg-white/70 p-3 transition hover:border-[var(--color-forest)]"
-                      href={`/library/${item.id}`}
-                      key={item.id}
-                    >
-                      <div className="flex gap-3">
-                        <BookCover
-                          className="w-20 shrink-0"
-                          title={item.book.title}
-                          authors={item.book.authors}
-                          coverUrl={item.book.coverUrl}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <h3 className="line-clamp-2 font-semibold">
-                            {item.book.title}
-                          </h3>
-                          <p className="mt-1 line-clamp-1 text-sm text-[var(--color-muted)]">
-                            {formatAuthors(item.book.authors)}
-                          </p>
-                          <ProgressBar className="mt-4" value={progress} />
-                          <p className="mt-2 text-xs text-[var(--color-muted)]">
-                            {progress}% 진행
-                          </p>
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
+              <div className="grid gap-2 sm:grid-cols-2">
+                {currentlyReading.map((item) => (
+                  <BookCard item={item} key={item.id} />
+                ))}
               </div>
             )}
           </div>
 
-          <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:p-5">
-            <h2 className="text-xl font-semibold">최근 기록</h2>
-            {summary.recentLogs.length === 0 ? (
-              <EmptyState
-                title="이번 주 기록이 비어 있습니다."
-                body="짧은 메모 하나면 충분합니다. 오늘 읽은 흔적을 남겨보세요."
-              />
+          <div className="rounded-md border border-[var(--color-line)] bg-white/35 p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">읽고 싶은 책</h2>
+              <Link
+                className="text-sm font-medium text-[var(--color-forest)] hover:underline"
+                href="/library#want_to_read"
+              >
+                전체
+              </Link>
+            </div>
+            {wantToRead.length === 0 ? (
+              <EmptyState title="대기열이 비어 있습니다." />
             ) : (
-              <ol className="mt-4 space-y-3">
-                {summary.recentLogs.map((log) => (
-                  <li
-                    className="rounded-md border border-[var(--color-line)] bg-white/70 p-3"
-                    key={log.id}
-                  >
-                    <p className="text-sm font-medium">
+              <div className="space-y-2">
+                {wantToRead.map((item) => (
+                  <BookCard compact item={item} key={item.id} />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="rounded-md border border-[var(--color-line)] bg-white/35 p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">추천</h2>
+              <Link
+                className="text-sm font-medium text-[var(--color-forest)] hover:underline"
+                href="/recommendations"
+              >
+                발견으로 이동
+              </Link>
+            </div>
+            <p className="text-sm leading-6 text-[var(--color-muted)]">
+              지금 서재의 진행 상태와 완독 기록을 기준으로 다음 책을 고릅니다.
+            </p>
+          </div>
+
+          <div className="rounded-md border border-[var(--color-line)] bg-white/35 p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">최근 메모</h2>
+              <Link
+                className="text-sm font-medium text-[var(--color-forest)] hover:underline"
+                href="/insights"
+              >
+                흐름 보기
+              </Link>
+            </div>
+            {recentNotes.length === 0 ? (
+              <EmptyState title="최근 메모가 없습니다." />
+            ) : (
+              <ol className="divide-y divide-[var(--color-line)]">
+                {recentNotes.map((log) => (
+                  <li className="py-2 first:pt-0 last:pb-0" key={log.id}>
+                    <p className="text-xs font-medium text-[var(--color-muted)]">
                       {formatDate(log.loggedAt)}
-                      {log.pagesRead ? ` · ${log.pagesRead}쪽` : null}
+                      {log.pagesRead ? ` · ${log.pagesRead}쪽` : ""}
                     </p>
-                    <p className="mt-1 text-sm leading-6 text-[var(--color-muted)]">
-                      {log.note ?? "메모 없이 진행만 기록했습니다."}
+                    <p className="mt-1 line-clamp-2 text-sm leading-6">
+                      {log.note}
                     </p>
                   </li>
                 ))}
@@ -172,69 +187,22 @@ export default async function Home() {
             )}
           </div>
         </section>
-
-        <section className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:p-5">
-          <h2 className="text-xl font-semibold">내 서재</h2>
-          {visibleItems.length === 0 ? (
-            <EmptyState
-              title="서재가 아직 비어 있습니다."
-              body="읽고 있는 책을 검색해 첫 번째 책장을 만들어보세요."
-            />
-          ) : (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {visibleItems.map((item) => (
-                <Link
-                  className="rounded-md border border-[var(--color-line)] bg-white/70 p-3 transition hover:border-[var(--color-forest)]"
-                  href={`/library/${item.id}`}
-                  key={item.id}
-                >
-                  <BookCover
-                    className="mb-3 w-full"
-                    title={item.book.title}
-                    authors={item.book.authors}
-                    coverUrl={item.book.coverUrl}
-                  />
-                  <h3 className="line-clamp-2 font-semibold">
-                    {item.book.title}
-                  </h3>
-                  <p className="mt-1 line-clamp-1 text-sm text-[var(--color-muted)]">
-                    {formatAuthors(item.book.authors)}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
       </div>
-    </main>
+    </AppShell>
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm">
-      <div className="mb-4 flex size-10 items-center justify-center rounded-md bg-[var(--color-soft)] text-[var(--color-forest)]">
-        {icon}
-      </div>
-      <p className="text-sm text-[var(--color-muted)]">{label}</p>
-      <p className="mt-1 text-3xl font-semibold">{value}</p>
-    </div>
+function calculateReadingStreak(logs: ReadingLog[]) {
+  const loggedDays = new Set(
+    logs.map((log) => new Date(log.loggedAt).toISOString().slice(0, 10)),
   );
-}
+  let streak = 0;
+  const cursor = new Date();
 
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="mt-4 rounded-md border border-dashed border-[var(--color-line)] bg-white/50 p-5">
-      <p className="font-medium">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">{body}</p>
-    </div>
-  );
+  while (loggedDays.has(cursor.toISOString().slice(0, 10))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
 }

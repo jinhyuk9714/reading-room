@@ -65,12 +65,13 @@ test.describe("local demo reading room management acceptance", () => {
     await expect(page.getByText("고친 기록")).toBeVisible();
     await expect(page.getByText("고치기 전 기록")).toHaveCount(0);
 
-    page.once("dialog", (dialog) => dialog.accept());
     await page
       .locator("li")
       .filter({ hasText: "고친 기록" })
       .getByRole("button", { name: /기록 삭제|삭제/i })
       .click();
+    await expect(page.getByRole("dialog", { name: /기록 삭제/i })).toBeVisible();
+    await page.getByRole("button", { name: /삭제 확인/i }).click();
 
     await expect(page.getByText("고친 기록")).toHaveCount(0);
     await expect(page.getByText(/아직 기록이 없습니다|기록이 비어/i)).toBeVisible();
@@ -94,12 +95,12 @@ test.describe("local demo reading room management acceptance", () => {
     await expect(page.getByText("완독 후 수정")).toBeVisible();
     await expect(page.getByText("상태 완독")).toBeVisible();
 
-    page.once("dialog", (dialog) => dialog.accept());
     await page
       .locator("li")
       .filter({ hasText: "완독 후 수정" })
       .getByRole("button", { name: /기록 삭제|삭제/i })
       .click();
+    await page.getByRole("button", { name: /삭제 확인/i }).click();
 
     await expect(page.getByText("상태 완독")).toBeVisible();
 
@@ -119,27 +120,14 @@ test.describe("local demo reading room management acceptance", () => {
 
     const archiveButton = page.getByRole("button", { name: /보관|아카이브/i });
     await expect(archiveButton).toBeVisible({ timeout: 5_000 });
-    let dismissedArchiveMessage = "";
-    page.once("dialog", async (dialog) => {
-      dismissedArchiveMessage = dialog.message();
-      await dialog.dismiss();
-    });
     await archiveButton.click();
-    await expect
-      .poll(() => dismissedArchiveMessage, { timeout: 3_000 })
-      .toContain("보관함");
+    await expect(page.getByRole("dialog", { name: /보관함으로 이동/i })).toBeVisible();
+    await page.getByRole("button", { name: /취소/i }).click();
     await expect(page).toHaveURL(new RegExp(`/library/${DEMO_ITEM_ID}$`));
     await expect(page.getByRole("heading", { name: "원본 제목" })).toBeVisible();
 
-    let acceptedArchiveMessage = "";
-    page.once("dialog", async (dialog) => {
-      acceptedArchiveMessage = dialog.message();
-      await dialog.accept();
-    });
     await archiveButton.click();
-    await expect
-      .poll(() => acceptedArchiveMessage, { timeout: 3_000 })
-      .toContain("보관함");
+    await page.getByRole("button", { name: /보관 확인/i }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByText("원본 제목")).not.toBeVisible();
 
@@ -155,23 +143,16 @@ test.describe("local demo reading room management acceptance", () => {
     await expect(page.getByText("원본 제목").first()).toBeVisible();
 
     await page.goto(`/library/${DEMO_ITEM_ID}`, { waitUntil: "domcontentloaded" });
-    let secondArchiveMessage = "";
-    page.once("dialog", async (dialog) => {
-      secondArchiveMessage = dialog.message();
-      await dialog.accept();
-    });
     await page.getByRole("button", { name: /보관|아카이브/i }).click();
-    await expect
-      .poll(() => secondArchiveMessage, { timeout: 3_000 })
-      .toContain("보관함");
+    await page.getByRole("button", { name: /보관 확인/i }).click();
     await page.getByRole("link", { name: /보관함|아카이브/i }).click();
 
-    page.once("dialog", (dialog) => dialog.accept());
     await page
       .locator("article")
       .filter({ hasText: "원본 제목" })
       .getByRole("button", { name: /영구 삭제|삭제/i })
       .click();
+    await page.getByRole("button", { name: /삭제 확인/i }).click();
 
     await expect(page.getByText("원본 제목")).toHaveCount(0);
     await expect(page.getByText(/서재가 아직 비어|보관한 책이 없습니다/i)).toBeVisible();
@@ -192,6 +173,42 @@ test.describe("local demo reading room management acceptance", () => {
     await expect(page.getByText("최근 많이 읽은 책")).toBeVisible();
     await expect(page.getByText("원본 제목").first()).toBeVisible();
     await expect(page.getByText("두 번째 책").first()).toBeVisible();
+    await expectNoFrameworkError(page);
+    await expectNoHorizontalOverflow(page);
+    consoleFailures.expectClean();
+  });
+
+  test("filters the local library by status workspace", async ({ page }) => {
+    const consoleFailures = collectConsoleFailures(page);
+    await seedAndOpen(page, seededLibraryState(), "/");
+    const libraryPanel = page.getByRole("region", { name: "내 서재" });
+
+    await expect(page.getByRole("heading", { name: "내 서재" })).toBeVisible();
+    await page.getByRole("button", { name: "완독" }).click();
+    await expect(libraryPanel.getByText("두 번째 책").first()).toBeVisible();
+    await expect(libraryPanel.getByText("원본 제목")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "읽는 중" }).click();
+    await expect(libraryPanel.getByText("원본 제목").first()).toBeVisible();
+    await expect(libraryPanel.getByText("두 번째 책")).toHaveCount(0);
+    await expectNoFrameworkError(page);
+    await expectNoHorizontalOverflow(page);
+    consoleFailures.expectClean();
+  });
+
+  test("shows a demo insights fallback page from local reading data", async ({
+    page,
+  }) => {
+    const consoleFailures = collectConsoleFailures(page);
+    await seedAndOpen(page, seededLibraryState(), "/insights");
+
+    expect(await page.locator("body").innerText()).not.toMatch(
+      /This page could not be found|404/i,
+    );
+    await expect(page.getByRole("heading", { name: /인사이트/i })).toBeVisible();
+    await expect(page.getByText("기록한 페이지")).toBeVisible();
+    await expect(page.getByText("110쪽")).toBeVisible();
+    await expect(page.getByText("추천 기준이 되는 회고")).toBeVisible();
     await expectNoFrameworkError(page);
     await expectNoHorizontalOverflow(page);
     consoleFailures.expectClean();
@@ -220,7 +237,7 @@ test.describe("local demo reading room management acceptance", () => {
     await expect(page).toHaveURL(/\/library\/demo-/);
     await page.getByRole("link", { name: /독서장|내 서재|서재/i }).first().click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByText("추천 도서").first()).toBeVisible();
+    await expect(page.getByText("로컬 맞춤 후보").first()).toBeVisible();
     await expectNoFrameworkError(page);
     await expectNoHorizontalOverflow(page);
     consoleFailures.expectClean();

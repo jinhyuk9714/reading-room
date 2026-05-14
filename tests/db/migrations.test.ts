@@ -24,6 +24,9 @@ const operationalHardeningSql = readMigration(
 const recommendationDiscoverySql = readMigration(
   "supabase/migrations/20260508004000_recommendation_discovery.sql",
 );
+const readingRoomV2Sql = readMigration(
+  "supabase/migrations/20260508005000_reading_room_v2_foundation.sql",
+);
 
 describe("Supabase hardening migration", () => {
   it("removes shared book metadata updates from authenticated users", () => {
@@ -182,5 +185,83 @@ describe("Supabase recommendation discovery migration", () => {
     expect(recommendationDiscoverySql.toLowerCase()).not.toContain(
       "security definer",
     );
+  });
+});
+
+describe("Supabase reading room v2 foundation migration", () => {
+  it("extends reading logs with quote, tags, and mood constraints", () => {
+    expect(readingRoomV2Sql).toContain(
+      "alter table public.reading_logs",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "add column if not exists quote text",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "add column if not exists tags text[] not null default '{}'::text[]",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "add column if not exists mood text",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "constraint reading_logs_quote_length check",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "quote is null or length(quote) <= 1000",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "constraint reading_logs_mood_not_empty check",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "mood is null or length(trim(mood)) > 0",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "constraint reading_logs_tags_not_empty check",
+    );
+    expect(readingRoomV2Sql).toContain("array_position(tags, '') is null");
+  });
+
+  it("adds reader preference goals and default log mode constraints", () => {
+    expect(readingRoomV2Sql).toContain(
+      "alter table public.reader_preferences",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "add column if not exists daily_page_goal integer not null default 20",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "add column if not exists weekly_session_goal integer not null default 4",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "add column if not exists default_log_mode text not null default 'page'",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "constraint reader_preferences_daily_page_goal_positive check",
+    );
+    expect(readingRoomV2Sql).toContain("daily_page_goal > 0");
+    expect(readingRoomV2Sql).toContain(
+      "constraint reader_preferences_weekly_session_goal_positive check",
+    );
+    expect(readingRoomV2Sql).toContain("weekly_session_goal > 0");
+    expect(readingRoomV2Sql).toContain(
+      "constraint reader_preferences_default_log_mode_allowed check",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "default_log_mode in ('page', 'percent')",
+    );
+  });
+
+  it("keeps public exposure limited to authenticated users and avoids privileged public functions", () => {
+    expect(readingRoomV2Sql).toContain(
+      "revoke all on public.reading_logs from public",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "revoke all on public.reader_preferences from public",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "grant select, insert, update, delete on public.reading_logs to authenticated",
+    );
+    expect(readingRoomV2Sql).toContain(
+      "grant select, insert, update, delete on public.reader_preferences to authenticated",
+    );
+    expect(readingRoomV2Sql.toLowerCase()).not.toContain("security definer");
   });
 });

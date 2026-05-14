@@ -71,6 +71,40 @@ describe("POST /api/recommendations/events", () => {
     );
   });
 
+  it("accepts hidden and excluded recommendation events", async () => {
+    const insert = vi.fn(async () => ({ error: null }));
+    createClientMock.mockResolvedValue({
+      auth: {
+        getUser: vi.fn(async () => ({
+          data: { user: { id: "user-1" } },
+          error: null,
+        })),
+      },
+      from: vi.fn(() => ({ insert })),
+    } as never);
+
+    for (const eventType of ["hidden", "excluded"]) {
+      const response = await POST(
+        new Request("https://example.com/api/recommendations/events", {
+          method: "POST",
+          body: JSON.stringify({
+            eventType,
+            card: recommendationCard(),
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+    }
+
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ event_type: "hidden" }),
+    );
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ event_type: "excluded" }),
+    );
+  });
+
   it("requires a signed-in user", async () => {
     createClientMock.mockResolvedValueOnce({
       auth: {

@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
-  type FormEvent,
   type ReactNode,
   useActionState,
   useEffect,
@@ -33,6 +32,8 @@ import {
 } from "@/app/actions/library";
 import { BookCover } from "@/components/ui/book-cover";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { ConfirmPanel } from "@/components/ui/confirm-panel";
+import { InlineNotice } from "@/components/ui/inline-notice";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { idleActionState, type ActionState } from "@/lib/library/validation";
 import { calculateProgress } from "@/lib/reading/progress";
@@ -48,6 +49,12 @@ type LibraryItemManagerProps = {
   logs: ReadingLog[];
 };
 
+type ReadingLogWithDetails = ReadingLog & {
+  quote?: string | null;
+  tags?: string[] | null;
+  mood?: string | null;
+};
+
 export function LibraryItemManager({ item, logs }: LibraryItemManagerProps) {
   const progress =
     item.currentPercent ??
@@ -58,28 +65,34 @@ export function LibraryItemManager({ item, logs }: LibraryItemManagerProps) {
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-5 text-[var(--color-ink)] md:px-8">
-      <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-        <aside className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:p-5">
-          <ButtonLink className="mb-5" href="/" variant="ghost">
+      <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[0.72fr_1.28fr]">
+        <aside className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm lg:sticky lg:top-5 lg:self-start">
+          <ButtonLink className="mb-4" href="/" variant="ghost">
             <ArrowLeft className="size-4" />
             독서장
           </ButtonLink>
-          <BookCover
-            authors={item.book.authors}
-            className="mx-auto w-44"
-            coverUrl={item.book.coverUrl}
-            title={item.book.title}
-          />
-          <h1 className="mt-5 text-3xl font-semibold tracking-tight">
-            {item.book.title}
-          </h1>
-          <p className="mt-2 text-[var(--color-muted)]">
-            {formatAuthors(item.book.authors)}
-          </p>
-          <p className="mt-2 text-sm text-[var(--color-muted)]">
-            {item.book.pageCount ? `전체 페이지 ${item.book.pageCount}쪽` : "페이지 미상"}
-          </p>
-          <ProgressBar className="mt-5" value={progress} />
+          <div className="flex gap-4">
+            <BookCover
+              authors={item.book.authors}
+              className="w-24 shrink-0"
+              coverUrl={item.book.coverUrl}
+              title={item.book.title}
+            />
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold leading-tight tracking-tight">
+                {item.book.title}
+              </h1>
+              <p className="mt-2 text-sm text-[var(--color-muted)]">
+                {formatAuthors(item.book.authors)}
+              </p>
+              <p className="mt-2 text-sm text-[var(--color-muted)]">
+                {item.book.pageCount
+                  ? `전체 페이지 ${item.book.pageCount}쪽`
+                  : "페이지 미상"}
+              </p>
+            </div>
+          </div>
+          <ProgressBar className="mt-4" value={progress} />
           <p className="mt-2 text-sm text-[var(--color-muted)]">
             {progress}% 진행 · 상태 {statusLabel(item.status)}
           </p>
@@ -242,6 +255,9 @@ function StatusButton({
 
 function DangerZone({ itemId }: { itemId: string }) {
   const router = useRouter();
+  const [confirming, setConfirming] = useState<"archive" | "delete" | null>(
+    null,
+  );
   const [archiveState, archiveAction, archivePending] = useActionState(
     archiveLibraryItemAction,
     idleActionState,
@@ -260,48 +276,54 @@ function DangerZone({ itemId }: { itemId: string }) {
 
   return (
     <section className="mt-5 grid gap-2">
-      <form
-        action={archiveAction}
-        onSubmit={(event) => {
-          if (
-            !window.confirm(
-              "이 책을 보관함으로 이동할까요? 독서장에서는 숨겨지고 보관함에서 복원할 수 있습니다.",
-            )
-          ) {
-            event.preventDefault();
-          }
-        }}
-      >
-        <input name="libraryItemId" type="hidden" value={itemId} />
+      {confirming === "archive" ? (
+        <form action={archiveAction}>
+          <ConfirmPanel
+            confirmLabel="보관함으로 이동"
+            description="독서장에서는 숨겨지고 보관함에서 다시 복원할 수 있습니다."
+            onCancel={() => setConfirming(null)}
+            pending={archivePending}
+            title="이 책을 보관할까요?"
+          >
+            <input name="libraryItemId" type="hidden" value={itemId} />
+          </ConfirmPanel>
+        </form>
+      ) : (
         <Button
           className="w-full"
           disabled={archivePending}
-          type="submit"
+          onClick={() => setConfirming("archive")}
+          type="button"
           variant="secondary"
         >
           <Archive className="size-4" />
-          {archivePending ? "보관 중" : "보관함으로 이동"}
+          보관함으로 이동
         </Button>
-      </form>
-      <form
-        action={deleteAction}
-        onSubmit={(event) => {
-          if (!window.confirm("이 책과 기록을 모두 삭제할까요?")) {
-            event.preventDefault();
-          }
-        }}
-      >
-        <input name="libraryItemId" type="hidden" value={itemId} />
+      )}
+      {confirming === "delete" ? (
+        <form action={deleteAction}>
+          <ConfirmPanel
+            confirmLabel="영구 삭제"
+            description="책과 모든 독서 기록을 삭제합니다. 이 작업은 되돌릴 수 없습니다."
+            onCancel={() => setConfirming(null)}
+            pending={deletePending}
+            title="이 책을 삭제할까요?"
+          >
+            <input name="libraryItemId" type="hidden" value={itemId} />
+          </ConfirmPanel>
+        </form>
+      ) : (
         <Button
           className="w-full"
           disabled={deletePending}
-          type="submit"
+          onClick={() => setConfirming("delete")}
+          type="button"
           variant="danger"
         >
           <Trash2 className="size-4" />
-          {deletePending ? "삭제 중" : "영구 삭제"}
+          영구 삭제
         </Button>
-      </form>
+      )}
       <ActionNotice state={archiveState.status === "idle" ? deleteState : archiveState} />
     </section>
   );
@@ -322,8 +344,15 @@ function ReadingLogForm({ item }: { item: LibraryItemWithBook }) {
 
   return (
     <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:p-5">
-      <h2 className="text-xl font-semibold">오늘 기록</h2>
-      <form action={formAction} className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">빠른 기록</h2>
+          <p className="text-sm text-[var(--color-muted)]">
+            위치, 메모, 인용문을 한 번에 남깁니다.
+          </p>
+        </div>
+      </div>
+      <form action={formAction} className="mt-4 grid gap-3 md:grid-cols-4">
         <input name="libraryItemId" type="hidden" value={item.id} />
         <input name="pageCount" type="hidden" value={item.book.pageCount ?? ""} />
         {item.book.pageCount ? (
@@ -354,14 +383,30 @@ function ReadingLogForm({ item }: { item: LibraryItemWithBook }) {
           placeholder="오늘 읽은 쪽"
           type="number"
         />
+        <input
+          className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)]"
+          name="mood"
+          placeholder="기분"
+        />
         <Button disabled={pending} type="submit">
           {pending ? "저장 중" : "기록 저장"}
         </Button>
         <textarea
-          className="min-h-24 rounded-md border border-[var(--color-line)] bg-white px-3 py-3 outline-none focus:border-[var(--color-forest)] md:col-span-3"
+          className="min-h-20 rounded-md border border-[var(--color-line)] bg-white px-3 py-3 outline-none focus:border-[var(--color-forest)] md:col-span-2"
           maxLength={500}
           name="note"
           placeholder="한 줄 메모"
+        />
+        <textarea
+          className="min-h-20 rounded-md border border-[var(--color-line)] bg-white px-3 py-3 outline-none focus:border-[var(--color-forest)] md:col-span-2"
+          maxLength={1000}
+          name="quote"
+          placeholder="인용문"
+        />
+        <input
+          className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)] md:col-span-4"
+          name="tags"
+          placeholder="태그 쉼표로 구분"
         />
       </form>
       <ActionNotice state={state} />
@@ -453,7 +498,11 @@ function Timeline({
       ) : (
         <ol className="mt-4 space-y-3">
           {logs.map((log) => (
-            <ReadingLogEntry item={item} key={log.id} log={log} />
+            <ReadingLogEntry
+              item={item}
+              key={log.id}
+              log={log as ReadingLogWithDetails}
+            />
           ))}
         </ol>
       )}
@@ -466,10 +515,11 @@ function ReadingLogEntry({
   log,
 }: {
   item: LibraryItemWithBook;
-  log: ReadingLog;
+  log: ReadingLogWithDetails;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [updateState, updateAction, updatePending] = useActionState(
     updateReadingLogAction,
     idleActionState,
@@ -501,6 +551,28 @@ function ReadingLogEntry({
               <p className="mt-1 text-sm leading-6 text-[var(--color-muted)]">
                 {log.note ?? "메모 없이 진행만 기록했습니다."}
               </p>
+              {log.quote ? (
+                <blockquote className="mt-3 border-l-2 border-[var(--color-forest)]/40 pl-3 text-sm leading-6 text-[var(--color-ink)]">
+                  {log.quote}
+                </blockquote>
+              ) : null}
+              {log.mood || log.tags?.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {log.mood ? (
+                    <span className="rounded-md border border-[var(--color-line)] bg-[var(--color-soft)] px-2 py-1 text-xs text-[var(--color-muted)]">
+                      {log.mood}
+                    </span>
+                  ) : null}
+                  {log.tags?.map((tag, index) => (
+                    <span
+                      className="rounded-md border border-[var(--color-line)] bg-white px-2 py-1 text-xs text-[var(--color-muted)]"
+                      key={`${tag}-${index}`}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="flex shrink-0 gap-2">
               <Button
@@ -512,32 +584,36 @@ function ReadingLogEntry({
                 <Pencil className="size-4" />
                 기록 수정
               </Button>
-              <form
-                action={deleteAction}
-                onSubmit={(event: FormEvent<HTMLFormElement>) => {
-                  if (!window.confirm("이 기록을 삭제할까요?")) {
-                    event.preventDefault();
-                  }
-                }}
+              <Button
+                disabled={deletePending}
+                onClick={() => setConfirmDelete(true)}
+                size="sm"
+                type="button"
+                variant="danger"
+              >
+                <Trash2 className="size-4" />
+                기록 삭제
+              </Button>
+            </div>
+          </div>
+          {confirmDelete ? (
+            <form action={deleteAction} className="mt-3">
+              <ConfirmPanel
+                confirmLabel="기록 삭제"
+                description="이 독서 기록만 삭제하고 최신 기록 기준으로 진행률을 다시 맞춥니다."
+                onCancel={() => setConfirmDelete(false)}
+                pending={deletePending}
+                title="이 기록을 삭제할까요?"
               >
                 <input name="libraryItemId" type="hidden" value={item.id} />
                 <input name="logId" type="hidden" value={log.id} />
-                <Button
-                  disabled={deletePending}
-                  size="sm"
-                  type="submit"
-                  variant="danger"
-                >
-                  <Trash2 className="size-4" />
-                  기록 삭제
-                </Button>
-              </form>
-            </div>
-          </div>
+              </ConfirmPanel>
+            </form>
+          ) : null}
           <ActionNotice state={deleteState} />
         </>
       ) : (
-        <form action={updateAction} className="grid gap-3 md:grid-cols-3">
+        <form action={updateAction} className="grid gap-3 md:grid-cols-4">
           <input name="libraryItemId" type="hidden" value={item.id} />
           <input name="logId" type="hidden" value={log.id} />
           <input name="pageCount" type="hidden" value={item.book.pageCount ?? ""} />
@@ -573,6 +649,13 @@ function ReadingLogEntry({
             placeholder="오늘 읽은 쪽"
             type="number"
           />
+          <input
+            aria-label="기분"
+            className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)]"
+            defaultValue={log.mood ?? ""}
+            name="mood"
+            placeholder="기분"
+          />
           <div className="flex gap-2">
             <Button disabled={updatePending} type="submit">
               {updatePending ? "저장 중" : "기록 저장"}
@@ -587,13 +670,28 @@ function ReadingLogEntry({
           </div>
           <textarea
             aria-label="메모"
-            className="min-h-24 rounded-md border border-[var(--color-line)] bg-white px-3 py-3 outline-none focus:border-[var(--color-forest)] md:col-span-3"
+            className="min-h-20 rounded-md border border-[var(--color-line)] bg-white px-3 py-3 outline-none focus:border-[var(--color-forest)] md:col-span-2"
             defaultValue={log.note ?? ""}
             maxLength={500}
             name="note"
             placeholder="한 줄 메모"
           />
-          <div className="md:col-span-3">
+          <textarea
+            aria-label="인용문"
+            className="min-h-20 rounded-md border border-[var(--color-line)] bg-white px-3 py-3 outline-none focus:border-[var(--color-forest)] md:col-span-2"
+            defaultValue={log.quote ?? ""}
+            maxLength={1000}
+            name="quote"
+            placeholder="인용문"
+          />
+          <input
+            aria-label="태그"
+            className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)] md:col-span-4"
+            defaultValue={tagsToText(log.tags)}
+            name="tags"
+            placeholder="태그 쉼표로 구분"
+          />
+          <div className="md:col-span-4">
             <ActionNotice state={updateState} />
           </div>
         </form>
@@ -608,13 +706,14 @@ function ActionNotice({ state }: { state: ActionState }) {
   }
 
   return (
-    <p
-      aria-live="polite"
-      className="mt-3 rounded-md border border-[var(--color-line)] bg-white/70 p-3 text-sm leading-6 text-[var(--color-muted)]"
-    >
+    <InlineNotice tone={state.status === "error" ? "error" : "success"}>
       {state.message}
-    </p>
+    </InlineNotice>
   );
+}
+
+function tagsToText(tags: string[] | null | undefined) {
+  return tags?.join(", ") ?? "";
 }
 
 function statusLabel(status: string) {

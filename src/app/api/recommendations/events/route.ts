@@ -9,7 +9,9 @@ import { createClient } from "@/lib/supabase/server";
 const EVENT_TYPES = new Set([
   "shown",
   "opened",
+  "hidden",
   "dismissed",
+  "excluded",
   "saved",
   "added_to_library",
   "feedback",

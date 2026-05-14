@@ -36,6 +36,9 @@ export type ReadingLog = {
   currentPercent: number | null;
   pagesRead: number | null;
   note: string | null;
+  quote?: string | null;
+  tags?: string[];
+  mood?: string | null;
 };
 
 export type ReadingRoomSummary = {
@@ -45,4 +48,46 @@ export type ReadingRoomSummary = {
   weeklyPages: number;
   recentLogs: ReadingLog[];
   currentlyReading: LibraryItemWithBook[];
+};
+
+export type QuickLogDraft = {
+  pageCount: number | null;
+  currentPage: number | null;
+  currentPercent: number | null;
+  pagesRead: number | null;
+  note: string | null;
+  quote?: string | null;
+  tags?: string[];
+  mood?: string | null;
+};
+
+export type ReadingPace = {
+  libraryItemId: string;
+  title: string;
+  remainingPages: number;
+  averagePagesPerActiveDay: number;
+  estimatedDaysToFinish: number | null;
+};
+
+export type CountSummary = {
+  label: string;
+  count: number;
+};
+
+export type ReadingInsightSummary = {
+  statusCounts: Record<ReadingStatus, number>;
+  weeklyPages: number;
+  recentStreakDays: number;
+  averagePagesPerActiveDay: number;
+  pace: ReadingPace[];
+  topAuthors: CountSummary[];
+  topTags: CountSummary[];
+  moodCounts: CountSummary[];
+};
+
+export type LibraryFilter = {
+  status?: ReadingStatus | "all";
+  author?: string;
+  tag?: string;
+  query?: string;
 };

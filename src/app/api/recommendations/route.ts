@@ -5,12 +5,15 @@ import {
   recommendationQueryFromIntent,
 } from "@/lib/recommendations/recommendations";
 import type {
+  RecommendationEventSignal,
   RecommendationIntent,
   RecommendationMode,
 } from "@/lib/recommendations/types";
 import { createClient } from "@/lib/supabase/server";
 
-async function getAuthenticatedUser() {
+type AuthenticatedSupabase = Awaited<ReturnType<typeof createClient>>;
+
+async function getAuthenticatedSupabase() {
   try {
     const supabase = await createClient();
     const {
@@ -22,7 +25,7 @@ async function getAuthenticatedUser() {
       return null;
     }
 
-    return user;
+    return { supabase, user };
   } catch {
     return null;
   }
@@ -53,13 +56,64 @@ function parseIntent(value: unknown): RecommendationIntent | undefined {
 
   const record = value as Record<string, unknown>;
   return {
-    mood: typeof record.mood === "string" ? record.mood : undefined,
-    length: typeof record.length === "string" ? record.length : undefined,
-    difficulty:
-      typeof record.difficulty === "string" ? record.difficulty : undefined,
-    genres: parseStringArray(record.genres),
-    purpose: typeof record.purpose === "string" ? record.purpose : undefined,
+    ...(typeof record.mood === "string" ? { mood: record.mood } : {}),
+    ...(typeof record.length === "string" ? { length: record.length } : {}),
+    ...(typeof record.difficulty === "string"
+      ? { difficulty: record.difficulty }
+      : {}),
+    ...(Array.isArray(record.genres)
+      ? { genres: parseStringArray(record.genres) }
+      : {}),
+    ...(typeof record.purpose === "string" ? { purpose: record.purpose } : {}),
+    ...((typeof record.daily_page_goal === "number" &&
+      Number.isFinite(record.daily_page_goal))
+      ? { daily_page_goal: record.daily_page_goal }
+      : {}),
+    ...(typeof record.default_log_mode === "string"
+      ? { default_log_mode: record.default_log_mode }
+      : {}),
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function recommendationEventFromRow(row: unknown): RecommendationEventSignal | null {
+  if (!isRecord(row) || typeof row.event_type !== "string") {
+    return null;
+  }
+
+  return {
+    eventType: row.event_type,
+    provider: typeof row.provider === "string" ? row.provider : null,
+    providerId: typeof row.provider_id === "string" ? row.provider_id : null,
+    recommendation: isRecord(row.recommendation) ? row.recommendation : null,
+  };
+}
+
+async function getRecommendationEventSignals(
+  supabase: AuthenticatedSupabase,
+  userId: string,
+): Promise<RecommendationEventSignal[]> {
+  try {
+    const { data, error } = await supabase
+      .from("recommendation_events")
+      .select("event_type, provider, provider_id, recommendation")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error || !Array.isArray(data)) {
+      return [];
+    }
+
+    return data
+      .map(recommendationEventFromRow)
+      .filter((event): event is RecommendationEventSignal => event !== null);
+  } catch {
+    return [];
+  }
 }
 
 export async function POST(request: Request) {
@@ -70,6 +124,7 @@ export async function POST(request: Request) {
     prompt?: unknown;
     previousProviderIds?: unknown;
     hiddenProviderIds?: unknown;
+    excludedProviderIds?: unknown;
     limit?: unknown;
   };
 
@@ -96,10 +151,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const user = await getAuthenticatedUser();
-  if (!user) {
+  const auth = await getAuthenticatedSupabase();
+  if (!auth) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const recommendationEvents = await getRecommendationEventSignals(
+    auth.supabase,
+    auth.user.id,
+  );
 
   const results = await getRecommendations(query, {
     limit,
@@ -107,6 +166,8 @@ export async function POST(request: Request) {
     intent,
     previousProviderIds: parseStringArray(body.previousProviderIds),
     hiddenProviderIds: parseStringArray(body.hiddenProviderIds),
+    excludedProviderIds: parseStringArray(body.excludedProviderIds),
+    recommendationEvents,
   });
 
   return NextResponse.json({ results });

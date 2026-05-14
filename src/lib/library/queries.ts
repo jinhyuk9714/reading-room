@@ -57,7 +57,7 @@ export async function getReadingRoom(userId: string) {
       supabase
         .from("reading_logs")
         .select(
-          "id,user_id,library_item_id,logged_at,current_page,current_percent,pages_read,note",
+          "id,user_id,library_item_id,logged_at,current_page,current_percent,pages_read,note,quote,tags,mood",
         )
         .eq("user_id", userId)
         .order("logged_at", { ascending: false })
@@ -100,7 +100,7 @@ export async function getLibraryItemDetail(userId: string, itemId: string) {
   const { data: logRows, error: logError } = await supabase
     .from("reading_logs")
     .select(
-      "id,user_id,library_item_id,logged_at,current_page,current_percent,pages_read,note",
+      "id,user_id,library_item_id,logged_at,current_page,current_percent,pages_read,note,quote,tags,mood",
     )
     .eq("user_id", userId)
     .eq("library_item_id", itemId)

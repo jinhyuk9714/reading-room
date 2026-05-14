@@ -37,4 +37,26 @@ describe("reading progress", () => {
       ],
     });
   });
+
+  it("rejects invalid quick log quote, mood, and tags", () => {
+    expect(
+      validateReadingLog({
+        pageCount: 120,
+        currentPage: 40,
+        currentPercent: null,
+        pagesRead: 8,
+        note: null,
+        quote: "x".repeat(1001),
+        mood: " ",
+        tags: ["insight", ""],
+      }),
+    ).toEqual({
+      ok: false,
+      errors: [
+        "인용문은 1000자 이내로 남겨주세요.",
+        "기분은 비워둘 수 없습니다.",
+        "태그는 빈 값 없이 입력해주세요.",
+      ],
+    });
+  });
 });

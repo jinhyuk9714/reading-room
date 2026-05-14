@@ -14,7 +14,13 @@ const DEMO_STORAGE_KEY = "reading-room-demo-v1";
 
 export type DemoReadingRoomState = {
   items: LibraryItemWithBook[];
-  logs: ReadingLog[];
+  logs: Array<
+    Omit<ReadingLog, "quote" | "tags" | "mood"> & {
+      quote?: string | null;
+      tags?: string[];
+      mood?: string | null;
+    }
+  >;
 };
 
 export function parsePathList(value: string | undefined, fallback: string[]) {

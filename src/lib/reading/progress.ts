@@ -1,15 +1,11 @@
+import type { QuickLogDraft } from "@/lib/reading/types";
+
 type ProgressInput = {
   currentPage: number | null;
   pageCount: number | null;
 };
 
-export type ReadingLogDraft = {
-  pageCount: number | null;
-  currentPage: number | null;
-  currentPercent: number | null;
-  pagesRead: number | null;
-  note: string | null;
-};
+export type ReadingLogDraft = QuickLogDraft;
 
 export type ValidationResult =
   | { ok: true; errors?: never }
@@ -56,6 +52,22 @@ export function validateReadingLog(draft: ReadingLogDraft): ValidationResult {
 
   if (noteLength > 500) {
     errors.push("메모는 500자 이내로 남겨주세요.");
+  }
+
+  if ((draft.quote?.length ?? 0) > 1000) {
+    errors.push("인용문은 1000자 이내로 남겨주세요.");
+  }
+
+  if (
+    draft.mood !== null &&
+    draft.mood !== undefined &&
+    draft.mood.trim().length === 0
+  ) {
+    errors.push("기분은 비워둘 수 없습니다.");
+  }
+
+  if (draft.tags?.some((tag) => tag.length === 0)) {
+    errors.push("태그는 빈 값 없이 입력해주세요.");
   }
 
   return errors.length > 0 ? { ok: false, errors } : { ok: true };

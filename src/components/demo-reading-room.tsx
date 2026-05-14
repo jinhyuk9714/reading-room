@@ -54,20 +54,42 @@ const DEMO_USER_ID = "demo-user";
 type DemoReadingRoomProps = {
   initialView:
     | "home"
+    | "library"
     | "search"
     | "detail"
     | "archive"
     | "rankings"
-    | "recommendations";
+    | "recommendations"
+    | "insights";
   detailId?: string;
+};
+
+type DemoReadingLog = ReadingLog & {
+  quote?: string | null;
+  tags?: string[];
+  mood?: string | null;
 };
 
 type DemoState = {
   items: LibraryItemWithBook[];
-  logs: ReadingLog[];
+  logs: DemoReadingLog[];
 };
 
 type DemoRecommendationPurpose = "auto" | "short" | "deep" | "explore";
+type DemoLibraryFilter =
+  | "all"
+  | "want_to_read"
+  | "reading"
+  | "paused"
+  | "finished";
+
+type ConfirmRequest = {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  variant?: "danger" | "secondary";
+  onConfirm: () => void;
+};
 
 const emptyState: DemoState = {
   items: [],
@@ -87,6 +109,9 @@ export function DemoReadingRoom({
     "idle" | "loading" | "done" | "error"
   >("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
+    null,
+  );
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -109,6 +134,15 @@ export function DemoReadingRoom({
 
   function navigate(path: string) {
     router.push(path);
+  }
+
+  function renderConfirmPanel() {
+    return confirmRequest ? (
+      <ConfirmPanel
+        request={confirmRequest}
+        onClose={() => setConfirmRequest(null)}
+      />
+    ) : null;
   }
 
   function addBook(book: BookSearchResult, status: ReadingStatus = "reading") {
@@ -263,15 +297,22 @@ export function DemoReadingRoom({
       currentPercent: number | null;
       pagesRead: number | null;
       note: string | null;
+      quote: string | null;
+      tags: string[];
+      mood: string | null;
     },
   ) {
     const validation = validateReadingLog({
       pageCount: item.book.pageCount,
-      ...draft,
+      currentPage: draft.currentPage,
+      currentPercent: draft.currentPercent,
+      pagesRead: draft.pagesRead,
+      note: draft.note,
     });
+    const metadataErrors = validateLogMetadata(draft);
 
-    if (!validation.ok) {
-      setMessage(validation.errors.join(" "));
+    if (!validation.ok || metadataErrors.length > 0) {
+      setMessage([...(validation.errors ?? []), ...metadataErrors].join(" "));
       return false;
     }
 
@@ -348,6 +389,9 @@ export function DemoReadingRoom({
     const currentPercent = numberOrNull(formData.get("currentPercent"));
     const pagesRead = numberOrNull(formData.get("pagesRead"));
     const note = stringOrNull(formData.get("note"));
+    const quote = stringOrNull(formData.get("quote"));
+    const tags = parseTagText(formData.get("tags"));
+    const mood = stringOrNull(formData.get("mood"));
     const validation = validateReadingLog({
       pageCount: item.book.pageCount,
       currentPage,
@@ -355,13 +399,14 @@ export function DemoReadingRoom({
       pagesRead,
       note,
     });
+    const metadataErrors = validateLogMetadata({ quote, tags, mood });
 
-    if (!validation.ok) {
-      setMessage(validation.errors.join(" "));
+    if (!validation.ok || metadataErrors.length > 0) {
+      setMessage([...(validation.errors ?? []), ...metadataErrors].join(" "));
       return;
     }
 
-    const log: ReadingLog = {
+    const log: DemoReadingLog = {
       id: `demo-log-${crypto.randomUUID()}`,
       userId: DEMO_USER_ID,
       libraryItemId: item.id,
@@ -370,6 +415,9 @@ export function DemoReadingRoom({
       currentPercent,
       pagesRead,
       note,
+      quote,
+      tags,
+      mood,
     };
 
     const nextItems = state.items.map((libraryItem) =>
@@ -431,34 +479,54 @@ export function DemoReadingRoom({
     const logs = state.logs.filter((log) => log.libraryItemId === detailId);
 
     return item ? (
-      <DetailView
-        item={item}
-        logs={logs}
-        message={message}
-        ready={ready}
-        onFinishBook={submitFinishBook}
-        onLog={submitReadingLog}
-        onArchive={() => archiveItem(item.id)}
-        onDelete={() => {
-          deleteItem(item.id);
-          navigate("/");
-        }}
-        onDeleteLog={deleteLog}
-        onUpdateLog={updateLog}
-        onUpdateMetadata={updateMetadata}
-	        onStatus={(status) =>
-	          updateItem(item.id, (libraryItem) => ({
-	            ...libraryItem,
-	            status,
-	            finishedOn:
-	              status === "finished"
-	                ? (libraryItem.finishedOn ?? today())
-	                : null,
-	            rating: status === "finished" ? libraryItem.rating : null,
-	            reflection: status === "finished" ? libraryItem.reflection : null,
-	          }))
-	        }
-      />
+      <>
+        <DetailView
+          item={item}
+          logs={logs}
+          message={message}
+          ready={ready}
+          onFinishBook={submitFinishBook}
+          onLog={submitReadingLog}
+          onArchive={() =>
+            setConfirmRequest({
+              title: "보관함으로 이동",
+              body: "이 책을 보관함으로 이동할까요? 독서장에서는 숨겨지고 보관함에서 복원할 수 있습니다.",
+              confirmLabel: "보관 확인",
+              variant: "secondary",
+              onConfirm: () => archiveItem(item.id),
+            })
+          }
+          onDelete={() =>
+            setConfirmRequest({
+              title: "책 영구 삭제",
+              body: "이 책과 기록을 모두 삭제할까요?",
+              confirmLabel: "삭제 확인",
+              variant: "danger",
+              onConfirm: () => {
+                deleteItem(item.id);
+                navigate("/");
+              },
+            })
+          }
+          onDeleteLog={deleteLog}
+          onRequestConfirm={setConfirmRequest}
+          onUpdateLog={updateLog}
+          onUpdateMetadata={updateMetadata}
+          onStatus={(status) =>
+            updateItem(item.id, (libraryItem) => ({
+              ...libraryItem,
+              status,
+              finishedOn:
+                status === "finished"
+                  ? (libraryItem.finishedOn ?? today())
+                  : null,
+              rating: status === "finished" ? libraryItem.rating : null,
+              reflection: status === "finished" ? libraryItem.reflection : null,
+            }))
+          }
+        />
+        {renderConfirmPanel()}
+      </>
     ) : (
       <MissingItemView />
     );
@@ -466,11 +534,15 @@ export function DemoReadingRoom({
 
   if (initialView === "archive") {
     return (
-      <ArchiveView
-        items={state.items.filter((item) => item.status === "abandoned")}
-        onDeleteItem={deleteItem}
-        onRestoreItem={restoreItem}
-      />
+      <>
+        <ArchiveView
+          items={state.items.filter((item) => item.status === "abandoned")}
+          onDeleteItem={deleteItem}
+          onRequestConfirm={setConfirmRequest}
+          onRestoreItem={restoreItem}
+        />
+        {renderConfirmPanel()}
+      </>
     );
   }
 
@@ -482,6 +554,7 @@ export function DemoReadingRoom({
     return (
       <RecommendationsView
         items={state.items}
+        ready={ready}
         onAddRecommendation={(card) =>
           addBook({
             provider:
@@ -510,17 +583,195 @@ export function DemoReadingRoom({
     );
   }
 
-  return <HomeView items={state.items} summary={summary} />;
+  if (initialView === "insights") {
+    return <InsightsView items={state.items} logs={state.logs} summary={summary} />;
+  }
+
+  if (initialView === "library") {
+    return <LibraryView items={state.items} ready={ready} />;
+  }
+
+  return (
+    <HomeView
+      items={state.items}
+      logs={state.logs}
+      ready={ready}
+      summary={summary}
+      onQuickLog={(item, draft) => {
+        const validation = validateReadingLog({
+          pageCount: item.book.pageCount,
+          ...draft,
+        });
+
+        if (!validation.ok) {
+          setMessage(validation.errors.join(" "));
+          return;
+        }
+
+        const log: DemoReadingLog = {
+          id: `demo-log-${crypto.randomUUID()}`,
+          userId: DEMO_USER_ID,
+          libraryItemId: item.id,
+          loggedAt: new Date().toISOString(),
+          currentPage: draft.currentPage,
+          currentPercent: null,
+          pagesRead: null,
+          note: draft.note,
+          quote: null,
+          tags: [],
+          mood: null,
+        };
+
+        commit({
+          items: state.items.map((libraryItem) =>
+            libraryItem.id === item.id
+              ? {
+                  ...libraryItem,
+                  status: "reading",
+                  finishedOn: null,
+                  currentPage: draft.currentPage,
+                  currentPercent: null,
+                }
+              : libraryItem,
+          ),
+          logs: [log, ...state.logs],
+        });
+        setMessage("빠른 기록을 저장했습니다.");
+      }}
+    >
+      {message ? <Notice>{message}</Notice> : null}
+      {renderConfirmPanel()}
+    </HomeView>
+  );
+}
+
+function LibraryView({
+  items,
+  ready,
+}: {
+  items: LibraryItemWithBook[];
+  ready: boolean;
+}) {
+  const [libraryFilter, setLibraryFilter] = useState<DemoLibraryFilter>("all");
+  const visibleItems = items.filter((item) => item.status !== "abandoned");
+  const filteredItems =
+    libraryFilter === "all"
+      ? visibleItems
+      : visibleItems.filter((item) => item.status === libraryFilter);
+  const counts = {
+    all: visibleItems.length,
+    want_to_read: visibleItems.filter((item) => item.status === "want_to_read")
+      .length,
+    reading: visibleItems.filter((item) => item.status === "reading").length,
+    paused: visibleItems.filter((item) => item.status === "paused").length,
+    finished: visibleItems.filter((item) => item.status === "finished").length,
+  } satisfies Record<DemoLibraryFilter, number>;
+
+  return (
+    <main className="min-h-screen bg-[var(--background)] px-4 py-5 text-[var(--color-ink)] md:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5">
+        <header className="flex flex-col gap-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm text-[var(--color-muted)]">Reading Room</p>
+            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+              서재
+            </h1>
+            <p className="mt-2 text-sm text-[var(--color-muted)]">
+              상태별로 오늘 이어 읽을 책과 다음 책을 정리합니다.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/search" variant="primary">
+              <BookPlus className="size-4" />책 추가
+            </ButtonLink>
+            <ButtonLink href="/" variant="secondary">
+              독서장
+            </ButtonLink>
+          </div>
+        </header>
+
+        <Panel title="상태별 서재">
+          <div
+            aria-label="서재 상태 필터"
+            className="mb-4 flex flex-wrap gap-2"
+            role="group"
+          >
+            {[
+              ["all", "전체"],
+              ["reading", "읽는 중"],
+              ["want_to_read", "읽고 싶음"],
+              ["paused", "잠시 멈춤"],
+              ["finished", "완독"],
+            ].map(([value, label]) => (
+              <Button
+                key={value}
+                disabled={!ready}
+                onClick={() => setLibraryFilter(value as DemoLibraryFilter)}
+                size="sm"
+                type="button"
+                variant={libraryFilter === value ? "primary" : "secondary"}
+              >
+                {label}
+                <span className="text-xs opacity-75">
+                  {counts[value as DemoLibraryFilter]}
+                </span>
+              </Button>
+            ))}
+          </div>
+
+          {visibleItems.length === 0 ? (
+            <EmptyState
+              body="책을 추가하면 읽는 중, 읽고 싶음, 완독 상태로 나눠 볼 수 있습니다."
+              title="서재가 아직 비어 있습니다."
+            />
+          ) : filteredItems.length === 0 ? (
+            <EmptyState
+              body="다른 상태를 선택하거나 책 상세에서 상태를 바꿔보세요."
+              title="이 워크스페이스에는 책이 없습니다."
+            />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredItems.map((item) => (
+                <BookCard item={item} key={item.id} cover="large" />
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </main>
+  );
 }
 
 function HomeView({
+  children,
   items,
+  logs,
+  ready,
   summary,
+  onQuickLog,
 }: {
+  children?: ReactNode;
   items: LibraryItemWithBook[];
+  logs: DemoReadingLog[];
+  ready: boolean;
   summary: ReturnType<typeof summarizeReadingRoom>;
+  onQuickLog: (
+    item: LibraryItemWithBook,
+    draft: {
+      currentPage: number | null;
+      currentPercent: number | null;
+      pagesRead: number | null;
+      note: string | null;
+    },
+  ) => void;
 }) {
+  const [libraryFilter, setLibraryFilter] = useState<DemoLibraryFilter>("all");
   const visibleItems = items.filter((item) => item.status !== "abandoned");
+  const filteredItems =
+    libraryFilter === "all"
+      ? visibleItems
+      : visibleItems.filter((item) => item.status === libraryFilter);
+  const quickLogItem = summary.currentlyReading[0];
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-5 text-[var(--color-ink)] md:px-8">
@@ -542,6 +793,9 @@ function HomeView({
             </ButtonLink>
             <ButtonLink href="/recommendations" variant="secondary">
               추천
+            </ButtonLink>
+            <ButtonLink href="/insights" variant="secondary">
+              인사이트
             </ButtonLink>
             <ButtonLink href="/archive" variant="ghost">
               보관함
@@ -566,6 +820,46 @@ function HomeView({
             value={`${summary.weeklyPages}쪽`}
           />
         </section>
+
+        {children}
+
+        {quickLogItem ? (
+          <Panel title="빠른 기록">
+            <form
+              className="grid gap-3 md:grid-cols-[1fr_1fr_auto]"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const formData = new FormData(event.currentTarget);
+                onQuickLog(quickLogItem, {
+                  currentPage: numberOrNull(formData.get("currentPage")),
+                  currentPercent: null,
+                  pagesRead: null,
+                  note: stringOrNull(formData.get("note")),
+                });
+                event.currentTarget.reset();
+              }}
+            >
+              <input
+                aria-label={quickLogItem.book.title}
+                className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)]"
+                defaultValue={quickLogItem.currentPage ?? ""}
+                max={quickLogItem.book.pageCount ?? undefined}
+                min="0"
+                name="currentPage"
+                placeholder="현재 페이지"
+                type="number"
+              />
+              <input
+                className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)]"
+                name="note"
+                placeholder="지금 남길 메모"
+              />
+              <Button disabled={!ready} type="submit">
+                빠른 기록 저장
+              </Button>
+            </form>
+          </Panel>
+        ) : null}
 
         <section className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
           <Panel
@@ -603,18 +897,66 @@ function HomeView({
         </section>
 
         <Panel title="내 서재">
+          <div
+            aria-label="서재 상태 필터"
+            className="mb-4 flex flex-wrap gap-2"
+            role="group"
+          >
+            {[
+              ["all", "전체"],
+              ["want_to_read", "읽고 싶음"],
+              ["reading", "읽는 중"],
+              ["paused", "잠시 멈춤"],
+              ["finished", "완독"],
+            ].map(([value, label]) => (
+              <Button
+                key={value}
+                disabled={!ready}
+                onClick={() => setLibraryFilter(value as DemoLibraryFilter)}
+                size="sm"
+                type="button"
+                variant={libraryFilter === value ? "primary" : "secondary"}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
           {visibleItems.length === 0 ? (
             <EmptyState
               body="읽고 있는 책을 검색해 첫 번째 책장을 만들어보세요."
               title="서재가 아직 비어 있습니다."
             />
+          ) : filteredItems.length === 0 ? (
+            <EmptyState
+              body="다른 상태 워크스페이스를 선택하거나 책 상태를 바꿔보세요."
+              title="이 워크스페이스에는 책이 없습니다."
+            />
           ) : (
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {visibleItems.map((item) => (
+              {filteredItems.map((item) => (
                 <BookCard item={item} key={item.id} cover="large" />
               ))}
             </div>
           )}
+        </Panel>
+        <Panel title="최근 인사이트">
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatCard
+              icon={<CalendarDays className="size-5" />}
+              label="이번 주"
+              value={`${summary.weeklyPages}쪽`}
+            />
+            <StatCard
+              icon={<BookCheck className="size-5" />}
+              label="기록"
+              value={`${logs.length}개`}
+            />
+            <StatCard
+              icon={<Lightbulb className="size-5" />}
+              label="태그"
+              value={`${new Set(logs.flatMap((log) => log.tags ?? [])).size}개`}
+            />
+          </div>
         </Panel>
       </div>
     </main>
@@ -797,12 +1139,13 @@ function DetailView({
   onDeleteLog,
   onFinishBook,
   onLog,
+  onRequestConfirm,
   onStatus,
   onUpdateLog,
   onUpdateMetadata,
 }: {
   item: LibraryItemWithBook;
-  logs: ReadingLog[];
+  logs: DemoReadingLog[];
   message: string | null;
   ready: boolean;
   onArchive: () => void;
@@ -813,6 +1156,7 @@ function DetailView({
     item: LibraryItemWithBook,
   ) => void;
   onLog: (event: FormEvent<HTMLFormElement>, item: LibraryItemWithBook) => void;
+  onRequestConfirm: (request: ConfirmRequest) => void;
   onStatus: (status: ReadingStatus) => void;
   onUpdateLog: (
     logId: string,
@@ -822,6 +1166,9 @@ function DetailView({
       currentPercent: number | null;
       pagesRead: number | null;
       note: string | null;
+      quote: string | null;
+      tags: string[];
+      mood: string | null;
     },
   ) => boolean;
   onUpdateMetadata: (
@@ -958,35 +1305,23 @@ function DetailView({
           </section>
 
           <div className="mt-5 grid gap-2">
-            <Button
-              className="w-full"
-              disabled={!ready}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "이 책을 보관함으로 이동할까요? 독서장에서는 숨겨지고 보관함에서 복원할 수 있습니다.",
-                  )
-                ) {
-                  onArchive();
-                }
-              }}
-              type="button"
-              variant="secondary"
-            >
+              <Button
+                className="w-full"
+                disabled={!ready}
+                onClick={onArchive}
+                type="button"
+                variant="secondary"
+              >
               <Archive className="size-4" />
               보관함으로 이동
             </Button>
-            <Button
-              className="w-full"
-              disabled={!ready}
-              onClick={() => {
-                if (window.confirm("이 책과 기록을 모두 삭제할까요?")) {
-                  onDelete();
-                }
-              }}
-              type="button"
-              variant="danger"
-            >
+              <Button
+                className="w-full"
+                disabled={!ready}
+                onClick={onDelete}
+                type="button"
+                variant="danger"
+              >
               <Trash2 className="size-4" />
               영구 삭제
             </Button>
@@ -1038,6 +1373,22 @@ function DetailView({
                 maxLength={500}
                 name="note"
                 placeholder="한 줄 메모"
+              />
+              <textarea
+                className="min-h-24 rounded-md border border-[var(--color-line)] bg-white px-3 py-3 outline-none focus:border-[var(--color-forest)] md:col-span-3"
+                maxLength={1000}
+                name="quote"
+                placeholder="인용문"
+              />
+              <input
+                className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)] md:col-span-2"
+                name="tags"
+                placeholder="태그"
+              />
+              <input
+                className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)]"
+                name="mood"
+                placeholder="오늘의 기분"
               />
             </form>
           </div>
@@ -1105,6 +1456,7 @@ function DetailView({
                 onCancelEdit={() => setEditingLogId(null)}
                 onDeleteLog={onDeleteLog}
                 onEditLog={setEditingLogId}
+                onRequestConfirm={onRequestConfirm}
                 onUpdateLog={(logId, draft) => {
                   if (onUpdateLog(logId, item, draft)) {
                     setEditingLogId(null);
@@ -1122,10 +1474,12 @@ function DetailView({
 function ArchiveView({
   items,
   onDeleteItem,
+  onRequestConfirm,
   onRestoreItem,
 }: {
   items: LibraryItemWithBook[];
   onDeleteItem: (itemId: string) => void;
+  onRequestConfirm: (request: ConfirmRequest) => void;
   onRestoreItem: (itemId: string) => void;
 }) {
   return (
@@ -1166,11 +1520,15 @@ function ArchiveView({
                   </Button>
                   <Button
                     className="mt-3"
-                    onClick={() => {
-                      if (window.confirm("이 책과 기록을 모두 삭제할까요?")) {
-                        onDeleteItem(item.id);
-                      }
-                    }}
+                    onClick={() =>
+                      onRequestConfirm({
+                        title: "책 영구 삭제",
+                        body: "이 책과 기록을 모두 삭제할까요?",
+                        confirmLabel: "삭제 확인",
+                        variant: "danger",
+                        onConfirm: () => onDeleteItem(item.id),
+                      })
+                    }
                     size="sm"
                     type="button"
                     variant="danger"
@@ -1298,11 +1656,131 @@ function demoRankingMetricLabel(
   return `${book[metric]}회`;
 }
 
+function InsightsView({
+  items,
+  logs,
+  summary,
+}: {
+  items: LibraryItemWithBook[];
+  logs: DemoReadingLog[];
+  summary: ReturnType<typeof summarizeReadingRoom>;
+}) {
+  const visibleItems = items.filter((item) => item.status !== "abandoned");
+  const totalPages = logs.reduce((sum, log) => sum + (log.pagesRead ?? 0), 0);
+  const tagCounts = countStrings(logs.flatMap((log) => log.tags ?? []));
+  const moodCounts = countStrings(logs.map((log) => log.mood).filter(isString));
+  const recentReflection = visibleItems.find((item) => item.reflection)?.reflection;
+  const recentQuote = logs.find((log) => log.quote)?.quote;
+
+  return (
+    <main className="min-h-screen bg-[var(--background)] px-4 py-5 text-[var(--color-ink)] md:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5">
+        <header className="flex flex-col gap-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm text-[var(--color-muted)]">Reading Room</p>
+            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+              독서 인사이트
+            </h1>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/" variant="secondary">
+              독서장
+            </ButtonLink>
+            <ButtonLink href="/recommendations" variant="secondary">
+              추천
+            </ButtonLink>
+          </div>
+        </header>
+
+        <section className="grid gap-3 md:grid-cols-4">
+          <StatCard
+            icon={<Library className="size-5" />}
+            label="서재"
+            value={`${visibleItems.length}권`}
+          />
+          <StatCard
+            icon={<BookCheck className="size-5" />}
+            label="완독"
+            value={`${summary.finishedCount}권`}
+          />
+          <StatCard
+            icon={<CalendarDays className="size-5" />}
+            label="이번 주"
+            value={`${summary.weeklyPages}쪽`}
+          />
+          <StatCard
+            icon={<Pencil className="size-5" />}
+            label="기록한 페이지"
+            value={`${totalPages}쪽`}
+          />
+        </section>
+
+        <section className="grid gap-5 lg:grid-cols-2">
+          <Panel title="태그와 무드">
+            <InsightPills empty="아직 태그가 없습니다." items={tagCounts} prefix="#" />
+            <div className="mt-4">
+              <InsightPills empty="아직 무드가 없습니다." items={moodCounts} />
+            </div>
+          </Panel>
+
+          <Panel title="최근 남긴 생각">
+            {recentReflection || recentQuote ? (
+              <div className="space-y-3 text-sm leading-6 text-[var(--color-muted)]">
+                {recentReflection ? <p>{recentReflection}</p> : null}
+                {recentQuote ? (
+                  <p className="rounded-md border border-[var(--color-line)] bg-white/70 p-3 text-[var(--color-ink)]">
+                    {recentQuote}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <EmptyState
+                body="완독 회고나 인용문을 남기면 이곳에서 다시 꺼내볼 수 있습니다."
+                title="아직 돌아볼 문장이 없습니다."
+              />
+            )}
+          </Panel>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function InsightPills({
+  empty,
+  items,
+  prefix = "",
+}: {
+  empty: string;
+  items: Array<{ label: string; count: number }>;
+  prefix?: string;
+}) {
+  if (items.length === 0) {
+    return <p className="text-sm text-[var(--color-muted)]">{empty}</p>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <span
+          className="rounded-full border border-[var(--color-line)] bg-white px-3 py-1 text-sm text-[var(--color-muted)]"
+          key={item.label}
+        >
+          {prefix}
+          {item.label} {item.count}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function RecommendationsView({
   items,
+  ready,
   onAddRecommendation,
 }: {
   items: LibraryItemWithBook[];
+  ready: boolean;
   onAddRecommendation: (card: RecommendationCard) => void;
 }) {
   const [purpose, setPurpose] = useState<DemoRecommendationPurpose>("auto");
@@ -1415,6 +1893,7 @@ function RecommendationsView({
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
+                      disabled={!ready}
                       onClick={() => onAddRecommendation(card)}
                       size="sm"
                       type="button"
@@ -1424,6 +1903,7 @@ function RecommendationsView({
                       서재에 추가
                     </Button>
                     <Button
+                      disabled={!ready}
                       onClick={() => hideRecommendation(card)}
                       size="sm"
                       type="button"
@@ -1460,7 +1940,7 @@ function createDemoRecommendations(
     explore: "탐색 추천",
   } satisfies Record<DemoRecommendationPurpose, string>;
   const title = {
-    auto: "추천 도서",
+    auto: "로컬 맞춤 후보",
     short: "짧은 밤의 책",
     deep: "깊이 읽는 책",
     explore: "낯선 장르 산책",
@@ -1564,7 +2044,10 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:p-5">
+    <section
+      aria-label={title}
+      className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:p-5"
+    >
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">{title}</h2>
         {action}
@@ -1650,15 +2133,17 @@ function LogList({
   onCancelEdit,
   onDeleteLog,
   onEditLog,
+  onRequestConfirm,
   onUpdateLog,
 }: {
   editingLogId?: string | null;
   item?: LibraryItemWithBook;
-  logs: ReadingLog[];
+  logs: DemoReadingLog[];
   ready?: boolean;
   onCancelEdit?: () => void;
   onDeleteLog?: (logId: string) => void;
   onEditLog?: (logId: string) => void;
+  onRequestConfirm?: (request: ConfirmRequest) => void;
   onUpdateLog?: (
     logId: string,
     draft: {
@@ -1666,6 +2151,9 @@ function LogList({
       currentPercent: number | null;
       pagesRead: number | null;
       note: string | null;
+      quote: string | null;
+      tags: string[];
+      mood: string | null;
     },
   ) => void;
 }) {
@@ -1687,6 +2175,9 @@ function LogList({
                   currentPercent: numberOrNull(formData.get("currentPercent")),
                   pagesRead: numberOrNull(formData.get("pagesRead")),
                   note: stringOrNull(formData.get("note")),
+                  quote: stringOrNull(formData.get("quote")),
+                  tags: parseTagText(formData.get("tags")),
+                  mood: stringOrNull(formData.get("mood")),
                 });
               }}
             >
@@ -1734,6 +2225,25 @@ function LogList({
                 maxLength={500}
                 name="note"
               />
+              <textarea
+                aria-label="인용문"
+                className="min-h-24 rounded-md border border-[var(--color-line)] bg-white px-3 py-3 outline-none focus:border-[var(--color-forest)] md:col-span-3"
+                defaultValue={log.quote ?? ""}
+                maxLength={1000}
+                name="quote"
+              />
+              <input
+                aria-label="태그"
+                className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)] md:col-span-2"
+                defaultValue={(log.tags ?? []).join(", ")}
+                name="tags"
+              />
+              <input
+                aria-label="오늘의 기분"
+                className="h-11 rounded-md border border-[var(--color-line)] bg-white px-3 outline-none focus:border-[var(--color-forest)]"
+                defaultValue={log.mood ?? ""}
+                name="mood"
+              />
             </form>
           ) : (
             <>
@@ -1746,6 +2256,28 @@ function LogList({
                   <p className="mt-1 text-sm leading-6 text-[var(--color-muted)]">
                     {log.note ?? "메모 없이 진행만 기록했습니다."}
                   </p>
+                  {log.quote ? (
+                    <p className="mt-2 rounded-md border border-[var(--color-line)] bg-white p-3 text-sm leading-6 text-[var(--color-ink)]">
+                      {log.quote}
+                    </p>
+                  ) : null}
+                  {(log.tags?.length ?? 0) > 0 || log.mood ? (
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--color-muted)]">
+                      {log.mood ? (
+                        <span className="rounded-full border border-[var(--color-line)] bg-white px-2 py-1">
+                          {log.mood}
+                        </span>
+                      ) : null}
+                      {(log.tags ?? []).map((tag) => (
+                        <span
+                          className="rounded-full border border-[var(--color-line)] bg-white px-2 py-1"
+                          key={`${log.id}-${tag}`}
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 {onEditLog || onDeleteLog ? (
                   <div className="flex shrink-0 gap-2">
@@ -1764,11 +2296,17 @@ function LogList({
                     {onDeleteLog ? (
                       <Button
                         disabled={!ready}
-                        onClick={() => {
-                          if (window.confirm("이 기록을 삭제할까요?")) {
-                            onDeleteLog(log.id);
-                          }
-                        }}
+                        onClick={() =>
+                          onRequestConfirm
+                            ? onRequestConfirm({
+                                title: "기록 삭제",
+                                body: "이 기록을 삭제할까요?",
+                                confirmLabel: "삭제 확인",
+                                variant: "danger",
+                                onConfirm: () => onDeleteLog(log.id),
+                              })
+                            : onDeleteLog(log.id)
+                        }
                         size="sm"
                         type="button"
                         variant="danger"
@@ -1830,6 +2368,47 @@ function Notice({ children }: { children: ReactNode }) {
   );
 }
 
+function ConfirmPanel({
+  request,
+  onClose,
+}: {
+  request: ConfirmRequest;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
+      role="dialog"
+      aria-labelledby="demo-confirm-title"
+    >
+      <section className="w-full max-w-md rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-5 shadow-lg">
+        <h2 className="text-xl font-semibold" id="demo-confirm-title">
+          {request.title}
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
+          {request.body}
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button onClick={onClose} type="button" variant="ghost">
+            취소
+          </Button>
+          <Button
+            onClick={() => {
+              request.onConfirm();
+              onClose();
+            }}
+            type="button"
+            variant={request.variant ?? "secondary"}
+          >
+            {request.confirmLabel}
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     want_to_read: "읽고 싶음",
@@ -1852,11 +2431,38 @@ function readState(): DemoState {
 
     return {
       items: Array.isArray(parsed.items) ? parsed.items : [],
-      logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+      logs: Array.isArray(parsed.logs) ? parsed.logs.map(normalizeLog) : [],
     };
   } catch {
     return emptyState;
   }
+}
+
+function normalizeLog(log: unknown): DemoReadingLog {
+  const record = log && typeof log === "object" ? log : {};
+  const partial = record as Partial<DemoReadingLog>;
+
+  return {
+    id: typeof partial.id === "string" ? partial.id : `demo-log-${crypto.randomUUID()}`,
+    userId: typeof partial.userId === "string" ? partial.userId : DEMO_USER_ID,
+    libraryItemId:
+      typeof partial.libraryItemId === "string" ? partial.libraryItemId : "",
+    loggedAt:
+      typeof partial.loggedAt === "string"
+        ? partial.loggedAt
+        : new Date().toISOString(),
+    currentPage:
+      typeof partial.currentPage === "number" ? partial.currentPage : null,
+    currentPercent:
+      typeof partial.currentPercent === "number" ? partial.currentPercent : null,
+    pagesRead: typeof partial.pagesRead === "number" ? partial.pagesRead : null,
+    note: typeof partial.note === "string" ? partial.note : null,
+    quote: typeof partial.quote === "string" ? partial.quote : null,
+    tags: Array.isArray(partial.tags)
+      ? partial.tags.filter((tag): tag is string => typeof tag === "string")
+      : [],
+    mood: typeof partial.mood === "string" ? partial.mood : null,
+  };
 }
 
 function numberOrNull(value: FormDataEntryValue | null): number | null {
@@ -1886,6 +2492,54 @@ function parseAuthorText(value: FormDataEntryValue | null): string[] {
     .split(",")
     .map((author) => author.trim())
     .filter(Boolean);
+}
+
+function parseTagText(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function validateLogMetadata(draft: {
+  quote?: string | null;
+  tags?: string[];
+  mood?: string | null;
+}) {
+  const errors: string[] = [];
+
+  if ((draft.quote?.length ?? 0) > 1000) {
+    errors.push("인용문은 1000자 이내로 남겨주세요.");
+  }
+
+  if (draft.tags?.some((tag) => tag.trim().length === 0)) {
+    errors.push("빈 태그는 저장할 수 없습니다.");
+  }
+
+  if (draft.mood !== null && draft.mood !== undefined && !draft.mood.trim()) {
+    errors.push("무드는 비워두거나 글자를 입력해주세요.");
+  }
+
+  return errors;
+}
+
+function countStrings(values: string[]) {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+}
+
+function isString(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 function parseReadingStatus(value: FormDataEntryValue | null): ReadingStatus {

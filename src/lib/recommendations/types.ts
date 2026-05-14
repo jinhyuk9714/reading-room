@@ -14,6 +14,8 @@ export type RecommendationIntent = {
   difficulty?: "easy" | "medium" | "deep" | string;
   genres?: string[];
   purpose?: string;
+  daily_page_goal?: number;
+  default_log_mode?: string;
 };
 
 export type ExistingRecommendationBook = {
@@ -31,6 +33,14 @@ export type RecommendationOptions = {
   hiddenProviderIds?: string[];
   excludedProviderIds?: string[];
   existingLibrary?: ExistingRecommendationBook[];
+  recommendationEvents?: RecommendationEventSignal[];
+};
+
+export type RecommendationEventSignal = {
+  eventType: string;
+  provider?: string | null;
+  providerId?: string | null;
+  recommendation?: Partial<RecommendationCard> | null;
 };
 
 export type RecommendationCard = {

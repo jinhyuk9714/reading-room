@@ -3,6 +3,7 @@ import type { BookSearchResult } from "@/lib/books/types";
 import type {
   ExistingRecommendationBook,
   RecommendationCard,
+  RecommendationEventSignal,
   RecommendationIntent,
   RecommendationMode,
   RecommendationOptions,
@@ -24,11 +25,18 @@ type LibrarySignals = {
   providerIds: Set<string>;
 };
 
+type PositiveRecommendationSignals = {
+  titles: Set<string>;
+  authors: Set<string>;
+  terms: Set<string>;
+};
+
 type RecommendationContext = {
   mode: RecommendationMode;
   intent?: RecommendationIntent;
   blockedProviderIds: Set<string>;
   librarySignals: LibrarySignals;
+  positiveSignals: PositiveRecommendationSignals;
 };
 
 type FallbackSearchPlan = {
@@ -63,6 +71,9 @@ const KOREAN_DIFFICULTY_WORDS: Record<string, string> = {
   deep: "깊이 있는",
 };
 
+const BLOCKING_EVENT_TYPES = new Set(["dismissed", "hidden", "excluded"]);
+const POSITIVE_EVENT_TYPES = new Set(["opened", "saved", "added_to_library"]);
+
 function normalizeLimit(limit: number | undefined): number {
   if (!Number.isFinite(limit)) {
     return 6;
@@ -77,7 +88,7 @@ function normalizeMode(mode: string | undefined): RecommendationMode {
 }
 
 function fallbackReason(query: string): string {
-  return `Matched your request for "${query}".`;
+  return `"${query}"에 맞춰 고른 국내판 추천입니다.`;
 }
 
 function comparableText(value: string): string {
@@ -90,6 +101,13 @@ function comparableText(value: string): string {
 
 function compactText(value: string): string {
   return comparableText(value).replaceAll(" ", "");
+}
+
+function textTokens(value: string): string[] {
+  return comparableText(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
 }
 
 function searchKey(book: BookSearchResult): string {
@@ -112,6 +130,48 @@ function addProviderIds(
     const trimmed = id.trim();
     if (trimmed) {
       target.add(trimmed.toLowerCase());
+    }
+  }
+}
+
+function addEventProviderId(
+  target: Set<string>,
+  signal: RecommendationEventSignal,
+): void {
+  const providerId = signal.providerId?.trim();
+  if (!providerId) {
+    return;
+  }
+
+  for (const key of providerIdKeys(providerId, signal.provider ?? undefined)) {
+    target.add(key);
+  }
+}
+
+function addPositiveSignalText(
+  target: PositiveRecommendationSignals,
+  signal: RecommendationEventSignal,
+): void {
+  const recommendation = signal.recommendation;
+  const title =
+    typeof recommendation?.title === "string" ? recommendation.title : null;
+  if (title) {
+    target.titles.add(comparableText(title));
+    for (const token of textTokens(title)) {
+      target.terms.add(token);
+    }
+  }
+
+  const authors = Array.isArray(recommendation?.authors)
+    ? recommendation.authors
+    : [];
+  for (const author of authors) {
+    if (typeof author !== "string") {
+      continue;
+    }
+    target.authors.add(comparableText(author));
+    for (const token of textTokens(author)) {
+      target.terms.add(token);
     }
   }
 }
@@ -193,17 +253,32 @@ function buildContext(
 ): RecommendationContext {
   const librarySignals = extractLibrarySignals(query, options.existingLibrary);
   const blockedProviderIds = new Set(librarySignals.providerIds);
+  const positiveSignals: PositiveRecommendationSignals = {
+    titles: new Set(),
+    authors: new Set(),
+    terms: new Set(),
+  };
 
   addProviderIds(blockedProviderIds, providerIdsFromQuery(query));
   addProviderIds(blockedProviderIds, options.previousProviderIds);
   addProviderIds(blockedProviderIds, options.hiddenProviderIds);
   addProviderIds(blockedProviderIds, options.excludedProviderIds);
 
+  for (const signal of options.recommendationEvents ?? []) {
+    if (BLOCKING_EVENT_TYPES.has(signal.eventType)) {
+      addEventProviderId(blockedProviderIds, signal);
+    }
+    if (POSITIVE_EVENT_TYPES.has(signal.eventType)) {
+      addPositiveSignalText(positiveSignals, signal);
+    }
+  }
+
   return {
     mode: normalizeMode(options.mode ?? modeFromQuery(query)),
     intent: options.intent,
     blockedProviderIds,
     librarySignals,
+    positiveSignals,
   };
 }
 
@@ -409,7 +484,49 @@ function providerScore(provider: BookSearchResult["provider"]): number {
   }
 }
 
-function candidateScore(query: string, book: BookSearchResult): number {
+function prefersShortPace(intent: RecommendationIntent | undefined): boolean {
+  const dailyPageGoal = intent?.daily_page_goal;
+  return (
+    intent?.length === "short" ||
+    (typeof dailyPageGoal === "number" &&
+      Number.isFinite(dailyPageGoal) &&
+      dailyPageGoal <= 50) ||
+    intent?.default_log_mode === "pages"
+  );
+}
+
+function candidateMatchesPositiveSignals(
+  book: Pick<BookSearchResult, "title" | "authors" | "description">,
+  signals: PositiveRecommendationSignals,
+): boolean {
+  const title = comparableText(book.title);
+  if (signals.titles.has(title)) {
+    return true;
+  }
+
+  for (const author of book.authors) {
+    if (signals.authors.has(comparableText(author))) {
+      return true;
+    }
+  }
+
+  const haystack = comparableText(
+    [book.title, ...book.authors, book.description ?? ""].join(" "),
+  );
+  for (const term of signals.terms) {
+    if (haystack.includes(term)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function candidateScore(
+  query: string,
+  book: BookSearchResult,
+  context: RecommendationContext,
+): number {
   const normalizedQuery = compactText(query);
   const title = compactText(book.title);
   const authors = book.authors.map(compactText).join("");
@@ -435,6 +552,16 @@ function candidateScore(query: string, book: BookSearchResult): number {
   if (book.pageCount) {
     score += 2;
   }
+  if (candidateMatchesPositiveSignals(book, context.positiveSignals)) {
+    score += 36;
+  }
+  if (
+    prefersShortPace(context.intent) &&
+    book.pageCount !== null &&
+    book.pageCount <= 220
+  ) {
+    score += book.pageCount <= 180 ? 14 : 8;
+  }
 
   return score;
 }
@@ -442,12 +569,33 @@ function candidateScore(query: string, book: BookSearchResult): number {
 function sortCandidates(
   query: string,
   books: BookSearchResult[],
+  context: RecommendationContext,
 ): BookSearchResult[] {
   return [...books].sort(
     (left, right) =>
-      candidateScore(query, right) - candidateScore(query, left) ||
+      candidateScore(query, right, context) - candidateScore(query, left, context) ||
       left.title.localeCompare(right.title),
   );
+}
+
+function reasonTagsForBook(
+  reasonTags: string[],
+  book: BookSearchResult,
+  context: RecommendationContext,
+): string[] {
+  const tags = [...reasonTags];
+  if (
+    candidateMatchesPositiveSignals(book, context.positiveSignals) &&
+    !tags.includes("취향 반영")
+  ) {
+    const domesticIndex = tags.indexOf("국내판 확인");
+    if (domesticIndex === -1) {
+      tags.push("취향 반영");
+    } else {
+      tags.splice(domesticIndex, 0, "취향 반영");
+    }
+  }
+  return tags;
 }
 
 function cardFromSearchResult(
@@ -514,7 +662,7 @@ async function revalidateKoreanCatalogCards(
       market: "kr",
     });
 
-    for (const book of sortCandidates(query, results)) {
+    for (const book of sortCandidates(query, results, context)) {
       const key = searchKey(book);
       if (
         seen.has(key) ||
@@ -565,7 +713,7 @@ async function fallbackRecommendations(
     const reasonTags = fallbackReasonTags(context, plan);
     const score = matchScore(context, section, plan, true);
 
-    for (const book of sortCandidates(plan.query, results)) {
+    for (const book of sortCandidates(plan.query, results, context)) {
       const key = searchKey(book);
       if (
         seen.has(key) ||
@@ -581,7 +729,7 @@ async function fallbackRecommendations(
           book,
           fallbackReason(plan.query),
           "search-fallback",
-          reasonTags,
+          reasonTagsForBook(reasonTags, book, context),
           score,
           section,
           true,

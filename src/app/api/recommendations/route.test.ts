@@ -84,6 +84,8 @@ describe("POST /api/recommendations", () => {
       intent: undefined,
       previousProviderIds: [],
       hiddenProviderIds: [],
+      excludedProviderIds: [],
+      recommendationEvents: [],
     });
   });
 
@@ -124,7 +126,76 @@ describe("POST /api/recommendations", () => {
         },
         previousProviderIds: ["kakao:already-seen"],
         hiddenProviderIds: [],
+        excludedProviderIds: [],
+        recommendationEvents: [],
       },
+    );
+  });
+
+  it("adds minimal recommendation event signals for the authenticated user", async () => {
+    const order = vi.fn(() => ({
+      limit: vi.fn(async () => ({
+        data: [
+          {
+            event_type: "dismissed",
+            provider: "kakao",
+            provider_id: "dismissed-book",
+            recommendation: { title: "지운 추천", authors: ["작가"] },
+          },
+          {
+            event_type: "saved",
+            provider: "naver",
+            provider_id: "saved-book",
+            recommendation: { title: "저장한 책", authors: ["좋아한 작가"] },
+          },
+        ],
+        error: null,
+      })),
+    }));
+    const eq = vi.fn(() => ({ order }));
+    const select = vi.fn(() => ({ eq }));
+    createClientMock.mockResolvedValueOnce({
+      auth: {
+        getUser: vi.fn(async () => ({
+          data: { user: { id: "user-1" } },
+          error: null,
+        })),
+      },
+      from: vi.fn(() => ({ select })),
+    } as never);
+    getRecommendationsMock.mockResolvedValueOnce([]);
+
+    const response = await POST(
+      new Request("https://example.com/api/recommendations", {
+        method: "POST",
+        body: JSON.stringify({ query: "한국 소설", limit: 2 }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(select).toHaveBeenCalledWith(
+      "event_type, provider, provider_id, recommendation",
+    );
+    expect(eq).toHaveBeenCalledWith("user_id", "user-1");
+    expect(order).toHaveBeenCalledWith("created_at", { ascending: false });
+    expect(getRecommendationsMock).toHaveBeenCalledWith(
+      "한국 소설",
+      expect.objectContaining({
+        recommendationEvents: [
+          {
+            eventType: "dismissed",
+            provider: "kakao",
+            providerId: "dismissed-book",
+            recommendation: { title: "지운 추천", authors: ["작가"] },
+          },
+          {
+            eventType: "saved",
+            provider: "naver",
+            providerId: "saved-book",
+            recommendation: { title: "저장한 책", authors: ["좋아한 작가"] },
+          },
+        ],
+      }),
     );
   });
 

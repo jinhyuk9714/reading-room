@@ -52,6 +52,12 @@ export function buildRecommendationQuery(
       ? `genres=${options.intent.genres.join(", ")}`
       : null,
     options.intent?.purpose ? `purpose=${options.intent.purpose}` : null,
+    typeof options.intent?.daily_page_goal === "number"
+      ? `daily_page_goal=${options.intent.daily_page_goal}`
+      : null,
+    options.intent?.default_log_mode
+      ? `default_log_mode=${options.intent.default_log_mode}`
+      : null,
   ].filter(Boolean);
 
   if (intentParts.length > 0) {

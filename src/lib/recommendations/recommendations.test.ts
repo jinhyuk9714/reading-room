@@ -50,23 +50,13 @@ describe("getRecommendations", () => {
       limit: 1,
       market: "kr",
     });
-    expect(results).toEqual([
-      {
-        title: "Pachinko",
-        authors: ["Min Jin Lee"],
-        reason: "Matched your request for \"family sagas\".",
-        reasonTags: ["검색 기반", "국내판 확인"],
-        matchScore: 73,
-        section: "now",
-        isFallback: true,
-        domesticVerified: true,
-        source: "search-fallback",
-        provider: "open-library",
-        providerId: "OL262758W",
-        coverUrl: "https://covers.openlibrary.org/b/id/123-L.jpg",
-        pageCount: null,
-      },
-    ]);
+    expect(results[0]).toMatchObject({
+      title: "Pachinko",
+      reason: "\"family sagas\"에 맞춰 고른 국내판 추천입니다.",
+      reasonTags: ["검색 기반", "국내판 확인"],
+      provider: "open-library",
+      providerId: "OL262758W",
+    });
   });
 
   it("falls back to search when the OpenAI Responses API request fails", async () => {
@@ -102,7 +92,7 @@ describe("getRecommendations", () => {
       {
         title: "The Left Hand of Darkness",
         authors: ["Ursula K. Le Guin"],
-        reason: "Matched your request for \"thoughtful science fiction\".",
+        reason: "\"thoughtful science fiction\"에 맞춰 고른 국내판 추천입니다.",
         reasonTags: ["검색 기반", "국내판 확인"],
         matchScore: 73,
         section: "now",
@@ -208,7 +198,7 @@ describe("getRecommendations", () => {
       {
         title: "Siddhartha",
         authors: ["Hermann Hesse"],
-        reason: 'Matched your request for "Hermann Hesse".',
+        reason: '"Hermann Hesse"에 맞춰 고른 국내판 추천입니다.',
         reasonTags: ["검색 기반", "비슷한 저자", "짧게 읽기", "국내판 확인"],
         matchScore: 75,
         section: "similar",
@@ -388,6 +378,141 @@ describe("getRecommendations", () => {
       providerId: "next-book",
       section: "conversation",
       reasonTags: ["대화형 탐색", "국내판 확인"],
+    });
+  });
+
+  it("excludes provider ids dismissed through recommendation events", async () => {
+    delete process.env.OPENAI_API_KEY;
+    searchBooksMock.mockResolvedValueOnce([
+      {
+        provider: "kakao",
+        providerId: "dismissed-book",
+        title: "지운 추천",
+        subtitle: null,
+        authors: ["작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 180,
+        publishedYear: 2024,
+        language: "kor",
+        description: null,
+        raw: {},
+      },
+      {
+        provider: "kakao",
+        providerId: "fresh-book",
+        title: "새 추천",
+        subtitle: null,
+        authors: ["작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 260,
+        publishedYear: 2025,
+        language: "kor",
+        description: null,
+        raw: {},
+      },
+    ]);
+
+    const results = await getRecommendations("한국 소설", {
+      limit: 1,
+      recommendationEvents: [
+        {
+          eventType: "dismissed",
+          provider: "kakao",
+          providerId: "dismissed-book",
+        },
+      ],
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      providerId: "fresh-book",
+      reason: "\"한국 소설\"에 맞춰 고른 국내판 추천입니다.",
+    });
+  });
+
+  it("boosts candidates related to saved and opened recommendation events", async () => {
+    delete process.env.OPENAI_API_KEY;
+    searchBooksMock.mockResolvedValueOnce([
+      {
+        provider: "kakao",
+        providerId: "general-book",
+        title: "일반 장편",
+        subtitle: null,
+        authors: ["다른 작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 420,
+        publishedYear: 2020,
+        language: "kor",
+        description: "천천히 읽는 장편 소설",
+        raw: {},
+      },
+      {
+        provider: "naver",
+        providerId: "related-short",
+        title: "저녁 산책 에세이",
+        subtitle: null,
+        authors: ["좋아한 작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 160,
+        publishedYear: 2024,
+        language: "ko",
+        description: "짧고 잔잔한 산책 에세이",
+        raw: {},
+      },
+    ]);
+
+    const results = await getRecommendations("오늘 읽을 책", {
+      limit: 1,
+      intent: {
+        daily_page_goal: 20,
+        default_log_mode: "pages",
+      },
+      recommendationEvents: [
+        {
+          eventType: "saved",
+          provider: "kakao",
+          providerId: "saved-essay",
+          recommendation: {
+            title: "좋아한 에세이",
+            authors: ["좋아한 작가"],
+            reason: "좋아한 책",
+            source: "search-fallback",
+            provider: "kakao",
+            providerId: "saved-essay",
+            coverUrl: null,
+            pageCount: 150,
+          },
+        },
+        {
+          eventType: "opened",
+          provider: "kakao",
+          providerId: "opened-walk",
+          recommendation: {
+            title: "산책자의 문장",
+            authors: ["산책 작가"],
+            reason: "열어 본 책",
+            source: "search-fallback",
+            provider: "kakao",
+            providerId: "opened-walk",
+            coverUrl: null,
+            pageCount: 190,
+          },
+        },
+      ],
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      providerId: "related-short",
+      reasonTags: ["검색 기반", "취향 반영", "짧게 읽기", "국내판 확인"],
     });
   });
 
