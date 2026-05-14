@@ -6,6 +6,7 @@ import {
   Library,
   LogOut,
   Plus,
+  Settings,
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/recommendations", label: "발견", icon: Compass },
   { href: "/insights", label: "인사이트", icon: BarChart3 },
   { href: "/archive", label: "보관함", icon: Archive },
+  { href: "/settings", label: "설정", icon: Settings },
 ];
 
 type AppShellProps = {
@@ -48,7 +50,7 @@ export function AppShell({ activeHref, children }: AppShellProps) {
 
           <nav
             aria-label="주요 메뉴"
-            className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:overflow-visible md:px-3 md:pb-0"
+            className="grid grid-cols-3 gap-1 px-3 pb-3 md:flex md:flex-col md:px-3 md:pb-0"
           >
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -58,7 +60,7 @@ export function AppShell({ activeHref, children }: AppShellProps) {
                 <Link
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition",
+                    "flex h-10 min-w-0 items-center justify-center gap-2 rounded-md px-2 text-sm font-medium transition md:justify-start md:px-3",
                     active
                       ? "bg-[var(--color-ink)] text-[var(--color-paper)]"
                       : "text-[var(--color-muted)] hover:bg-[var(--color-soft)] hover:text-[var(--color-ink)]",

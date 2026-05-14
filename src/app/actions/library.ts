@@ -82,6 +82,30 @@ function parseAuthors(value: FormDataEntryValue | null): string[] {
   }
 }
 
+function recommendationCardFromFormData(formData: FormData) {
+  const source = stringOrNull(formData.get("recommendationSource"));
+  const provider = stringOrNull(formData.get("recommendationProvider"));
+  const providerId = stringOrNull(formData.get("recommendationProviderId"));
+  const title = stringOrNull(formData.get("recommendationTitle"));
+  const reason = stringOrNull(formData.get("recommendationReason"));
+
+  if (!source || !provider || !providerId || !title || !reason) {
+    return null;
+  }
+
+  return {
+    title,
+    authors: parseAuthors(formData.get("recommendationAuthors")),
+    reason,
+    section: stringOrNull(formData.get("recommendationSection")),
+    source,
+    provider,
+    providerId,
+    coverUrl: stringOrNull(formData.get("recommendationCoverUrl")),
+    pageCount: numberOrNull(formData.get("recommendationPageCount")),
+  };
+}
+
 function parseProvider(value: FormDataEntryValue | null): BookProvider {
   return value === "google" ||
     value === "open-library" ||
@@ -118,6 +142,8 @@ function quoteValidationError(quote: string | null) {
 
 function revalidateReadingRoom(itemId?: string | null) {
   revalidatePath("/", "layout");
+  revalidatePath("/library");
+  revalidatePath("/insights");
   revalidatePath("/archive");
   revalidatePath("/rankings");
   revalidatePath("/recommendations");
@@ -223,6 +249,42 @@ async function findOrInsertBook(
   return insertedBook;
 }
 
+async function recordRecommendationLibraryEvent({
+  bookId,
+  formData,
+  initialStatus,
+  libraryItemId,
+  supabase,
+  userId,
+}: {
+  bookId: string;
+  formData: FormData;
+  initialStatus: string;
+  libraryItemId: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+}) {
+  const recommendation = recommendationCardFromFormData(formData);
+
+  if (!recommendation) {
+    return;
+  }
+
+  await supabase.from("recommendation_events").insert({
+    user_id: userId,
+    book_id: bookId,
+    event_type: initialStatus === "want_to_read" ? "saved" : "added_to_library",
+    provider: recommendation.provider,
+    provider_id: recommendation.providerId,
+    source: recommendation.source,
+    recommendation,
+    metadata: {
+      initialStatus,
+      libraryItemId,
+    },
+  });
+}
+
 async function updateLibraryProgress(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
@@ -314,6 +376,17 @@ async function addSearchResultToLibraryCore(formData: FormData) {
   if (libraryError || !libraryItem) {
     throw new Error(formatDatabaseError(libraryError));
   }
+
+  await recordRecommendationLibraryEvent({
+    bookId: savedBook.id,
+    formData,
+    initialStatus,
+    libraryItemId: libraryItem.id,
+    supabase,
+    userId: user.id,
+  }).catch(() => {
+    // Recommendation events are personalization hints and must not block saving.
+  });
 
   revalidateReadingRoom(libraryItem.id);
   return libraryItem.id as string;

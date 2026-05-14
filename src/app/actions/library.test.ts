@@ -111,6 +111,37 @@ describe("library actions", () => {
     });
   });
 
+  it("records saved recommendation feedback when a recommendation is added to the library", async () => {
+    const { addManualBookState } = await import("@/app/actions/library");
+    const formData = new FormData();
+    formData.set("title", "추천 책");
+    formData.set("authorsText", "추천 작가");
+    formData.set("status", "want_to_read");
+    formData.set("recommendationSource", "search-fallback");
+    formData.set("recommendationProvider", "kakao");
+    formData.set("recommendationProviderId", "kakao-1");
+    formData.set("recommendationTitle", "추천 책");
+    formData.set("recommendationAuthors", JSON.stringify(["추천 작가"]));
+    formData.set("recommendationReason", "서재 흐름과 잘 맞습니다.");
+
+    await expect(addManualBookState({ status: "idle", message: "" }, formData))
+      .rejects.toThrow("NEXT_REDIRECT:/library/item-1");
+
+    expect(databaseCalls.inserts).toContainEqual({
+      table: "recommendation_events",
+      payload: expect.objectContaining({
+        event_type: "saved",
+        provider: "kakao",
+        provider_id: "kakao-1",
+        source: "search-fallback",
+        recommendation: expect.objectContaining({
+          title: "추천 책",
+          authors: ["추천 작가"],
+        }),
+      }),
+    });
+  });
+
   it("rejects reading log quotes longer than 1000 characters", async () => {
     const { addReadingLogAction } = await import("@/app/actions/library");
     const formData = new FormData();

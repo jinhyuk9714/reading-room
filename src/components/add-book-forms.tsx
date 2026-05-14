@@ -90,6 +90,15 @@ export function RecommendationAddForm({ card }: { card: RecommendationCard }) {
   return (
     <form action={formAction} className="mt-3">
       <BookHiddenFields book={book} />
+      <input name="recommendationAuthors" type="hidden" value={JSON.stringify(card.authors)} />
+      <input name="recommendationCoverUrl" type="hidden" value={card.coverUrl ?? ""} />
+      <input name="recommendationPageCount" type="hidden" value={card.pageCount ?? ""} />
+      <input name="recommendationProvider" type="hidden" value={card.provider} />
+      <input name="recommendationProviderId" type="hidden" value={card.providerId} />
+      <input name="recommendationReason" type="hidden" value={card.reason} />
+      <input name="recommendationSection" type="hidden" value={card.section ?? ""} />
+      <input name="recommendationSource" type="hidden" value={card.source} />
+      <input name="recommendationTitle" type="hidden" value={card.title} />
       <StatusSelect />
       <Button disabled={pending} size="sm" type="submit" variant="secondary">
         <BookPlus className="size-4" />

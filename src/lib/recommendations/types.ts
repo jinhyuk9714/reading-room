@@ -13,6 +13,7 @@ export type RecommendationIntent = {
   length?: "short" | "medium" | "long" | string;
   difficulty?: "easy" | "medium" | "deep" | string;
   genres?: string[];
+  blockedSubjects?: string[];
   purpose?: string;
   daily_page_goal?: number;
   default_log_mode?: string;

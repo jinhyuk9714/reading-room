@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type ReactNode, useActionState, useEffect } from "react";
+import { type ReactNode, useActionState, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ConfirmPanel } from "@/components/ui/confirm-panel";
 import { idleActionState, type ActionState } from "@/lib/library/validation";
 
 type ArchivedItemDeleteFormProps = {
@@ -22,6 +23,7 @@ export function ArchivedItemDeleteForm({
 }: ArchivedItemDeleteFormProps) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(action, idleActionState);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (state.status === "success") {
@@ -34,8 +36,9 @@ export function ArchivedItemDeleteForm({
       action={formAction}
       className="mt-3"
       onSubmit={(event) => {
-        if (confirmMessage && !window.confirm(confirmMessage)) {
+        if (confirmMessage && !confirming) {
           event.preventDefault();
+          setConfirming(true);
         }
       }}
     >
@@ -43,6 +46,15 @@ export function ArchivedItemDeleteForm({
       <Button disabled={pending} size="sm" type="submit" variant={variant}>
         {children}
       </Button>
+      {confirming && confirmMessage ? (
+        <ConfirmPanel
+          confirmLabel="삭제 확인"
+          description={confirmMessage}
+          onCancel={() => setConfirming(false)}
+          pending={pending}
+          title="보관한 책을 영구 삭제할까요?"
+        />
+      ) : null}
       {state.status === "error" ? (
         <p className="mt-2 text-sm text-[var(--color-burgundy)]">
           {state.message}

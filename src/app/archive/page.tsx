@@ -1,15 +1,17 @@
-import { Archive, LogOut, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   deleteLibraryItemAction,
   restoreLibraryItemAction,
 } from "@/app/actions/library";
-import { signOut } from "@/app/actions/auth";
 import { ArchivedItemDeleteForm } from "@/components/archived-item-delete-form";
 import { DemoReadingRoom } from "@/components/demo-reading-room";
+import { AppShell } from "@/components/ui/app-shell";
 import { BookCover } from "@/components/ui/book-cover";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { hasSupabaseEnv } from "@/lib/env";
 import { getReadingRoom } from "@/lib/library/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -33,29 +35,19 @@ export default async function ArchivePage() {
   const archivedItems = items.filter((item) => item.status === "abandoned");
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-4 py-5 text-[var(--color-ink)] md:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5">
-        <header className="flex flex-col gap-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm text-[var(--color-muted)]">Reading Room</p>
-            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-              보관함
-            </h1>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <ButtonLink href="/" variant="secondary">
-              독서장
+    <AppShell activeHref="/archive">
+      <div className="flex flex-col gap-4">
+        <PageHeader
+          actions={
+            <ButtonLink href="/library" size="sm" variant="secondary">
+              서재로 이동
             </ButtonLink>
-            <form action={signOut}>
-              <Button type="submit" variant="ghost">
-                <LogOut className="size-4" />
-                로그아웃
-              </Button>
-            </form>
-          </div>
-        </header>
+          }
+          meta={`${archivedItems.length}권 보관 중`}
+          title="보관함"
+        />
 
-        <section className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:p-5">
+        <section className="rounded-md border border-[var(--color-line)] bg-white/35 p-3">
           <div className="mb-4 flex items-center gap-2">
             <span className="flex size-10 items-center justify-center rounded-md bg-[var(--color-soft)] text-[var(--color-forest)]">
               <Archive className="size-5" />
@@ -63,9 +55,7 @@ export default async function ArchivePage() {
             <h2 className="text-xl font-semibold">보관한 책</h2>
           </div>
           {archivedItems.length === 0 ? (
-            <p className="rounded-md border border-dashed border-[var(--color-line)] bg-white/50 p-5 text-sm leading-6 text-[var(--color-muted)]">
-              보관한 책이 없습니다.
-            </p>
+            <EmptyState title="보관한 책이 없습니다." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {archivedItems.map((item) => (
@@ -109,6 +99,6 @@ export default async function ArchivePage() {
           )}
         </section>
       </div>
-    </main>
+    </AppShell>
   );
 }

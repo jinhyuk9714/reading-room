@@ -1,6 +1,6 @@
 import { BookOpen, KeyRound } from "lucide-react";
 import { signInWithGoogle } from "@/app/actions/auth";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { hasGoogleOAuthEnabled, hasSupabaseEnv } from "@/lib/env";
 
 const authErrorMessages: Record<string, string> = {
@@ -87,6 +87,10 @@ export default async function LoginPage({
                 </Button>
               </form>
             )}
+
+            <ButtonLink className="mt-3 w-full" href="/demo" size="lg" variant="secondary">
+              로그인 없이 체험하기
+            </ButtonLink>
 
             {errorMessage ? (
               <p className="mt-4 text-sm text-[var(--color-burgundy)]">

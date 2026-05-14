@@ -14,8 +14,9 @@ import {
   type RankingReadingLog,
 } from "@/lib/rankings";
 import { sanitizeDatabaseError } from "@/lib/library/validation";
+import { defaultReaderPreferences } from "@/lib/reader-preferences";
 import { summarizeReadingRoom } from "@/lib/reading/stats";
-import type { ReadingStatus } from "@/lib/reading/types";
+import type { ReaderPreferences, ReadingStatus } from "@/lib/reading/types";
 
 type RankingBookRow = {
   id: string;
@@ -36,6 +37,14 @@ type RankingItemRow = {
 type RankingLogRow = {
   library_item_id: string;
   logged_at: string;
+};
+
+type ReaderPreferenceRow = {
+  daily_page_goal: number | null;
+  weekly_session_goal: number | null;
+  default_log_mode: string | null;
+  favorite_subjects: string[] | null;
+  blocked_subjects: string[] | null;
 };
 
 function rankingBookFromRow(row: RankingItemRow) {
@@ -79,6 +88,25 @@ export async function getReadingRoom(userId: string) {
     logs,
     summary: summarizeReadingRoom({ items, logs }),
   };
+}
+
+export async function getReaderPreferences(
+  userId: string,
+): Promise<ReaderPreferences> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("reader_preferences")
+    .select(
+      "daily_page_goal,weekly_session_goal,default_log_mode,favorite_subjects,blocked_subjects",
+    )
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(sanitizeDatabaseError(error));
+  }
+
+  return mapReaderPreferences(data as ReaderPreferenceRow | null);
 }
 
 export async function getLibraryItemDetail(userId: string, itemId: string) {
@@ -187,5 +215,26 @@ export async function getAnonymousReadingRankings(userId?: string): Promise<{
   return {
     rankings: aggregateAnonymousRankings({ items, logs }),
     source: "personal",
+  };
+}
+
+function mapReaderPreferences(row: ReaderPreferenceRow | null): ReaderPreferences {
+  if (!row) {
+    return defaultReaderPreferences;
+  }
+
+  return {
+    dailyPageGoal:
+      typeof row.daily_page_goal === "number"
+        ? row.daily_page_goal
+        : defaultReaderPreferences.dailyPageGoal,
+    weeklySessionGoal:
+      typeof row.weekly_session_goal === "number"
+        ? row.weekly_session_goal
+        : defaultReaderPreferences.weeklySessionGoal,
+    defaultLogMode:
+      row.default_log_mode === "percent" ? "percent" : "page",
+    favoriteSubjects: row.favorite_subjects ?? [],
+    blockedSubjects: row.blocked_subjects ?? [],
   };
 }

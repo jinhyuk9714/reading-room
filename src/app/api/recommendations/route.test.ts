@@ -81,7 +81,10 @@ describe("POST /api/recommendations", () => {
     expect(getRecommendationsMock).toHaveBeenCalledWith("family sagas", {
       limit: 1,
       mode: "feed",
-      intent: undefined,
+      intent: {
+        daily_page_goal: 20,
+        default_log_mode: "page",
+      },
       previousProviderIds: [],
       hiddenProviderIds: [],
       excludedProviderIds: [],
@@ -118,6 +121,8 @@ describe("POST /api/recommendations", () => {
         limit: 3,
         mode: "purpose",
         intent: {
+          daily_page_goal: 20,
+          default_log_mode: "page",
           mood: "calm",
           length: "short",
           difficulty: "easy",

@@ -24,17 +24,19 @@ Open `http://localhost:3000`.
 
 The app can render a setup/demo state without Supabase values. Cloud persistence requires Supabase, and Google sign-in becomes available after the OAuth setup below.
 
-## Reading OS v2
+## Reading OS v2.1
 
 The no-env demo and authenticated app are expected to cover the core reading OS routes:
 
 - `/` home cockpit with active reading, quick progress logging, status workspaces, recent logs, and local insight counters.
+- `/demo` production-safe no-login demo for trying the full reading loop before OAuth setup or sign-in.
 - `/search` book search and manual add.
 - `/library/[id]` book detail with metadata editing, status changes, reading log editing, archiving, and deletion.
-- `/archive` archived books with restore and delete actions.
+- `/archive` archived books with restore and in-app confirmed delete actions.
 - `/rankings` local or anonymous ranking fallback.
-- `/recommendations` recommendation discovery with purpose switching and dismiss/add regression coverage.
-- `/insights` reading insight fallback for local demo data, including status totals, page totals, tags, moods, quotes, and reflections.
+- `/recommendations` recommendation discovery with purpose switching, quick actions, hidden/saved/opened feedback signals, and dismiss/add regression coverage.
+- `/insights` reading insight fallback for local demo data, including status totals, page totals, goals, pace, tags, moods, quotes, and reflections.
+- `/settings` reader goals and recommendation preferences: daily page goal, weekly session goal, default log mode, favorite keywords, and blocked keywords.
 
 Demo state is stored in `localStorage` under `reading-room-demo-v1`. OS v2 reading logs add:
 
@@ -43,6 +45,8 @@ Demo state is stored in `localStorage` under `reading-room-demo-v1`. OS v2 readi
 - `mood: string | null`
 
 Older seeded demo states that only include `note`, page progress, and `pagesRead` are normalized in the demo UI so existing localStorage fixtures keep working.
+
+Reader preferences are stored in `reader_preferences` when Supabase is configured. Recommendation feedback is stored as append-only `recommendation_events` rows and is used only for personal ranking and exclusion; it is not mixed into public ranking output.
 
 ## Environment
 
@@ -121,6 +125,7 @@ For a local migration smoke test:
 ```bash
 supabase start
 supabase db reset
+supabase stop --no-backup
 ```
 
 Before production deploys, confirm the latest migration has been applied to the target Supabase project and that Row Level Security policies are enabled.
@@ -155,13 +160,15 @@ npx playwright test tests/e2e/demo-flow.spec.ts tests/e2e/local-demo-management.
 npm run e2e
 ```
 
-GitHub Actions runs the same checks on pull requests and pushes to `main`. The e2e configuration intentionally runs with empty Supabase public values so unauthenticated setup/login flows remain testable in CI.
+GitHub Actions runs the same checks on pull requests and pushes to `main`. CI installs the Supabase CLI, starts the local Supabase stack, runs `npm run db:test`, then stops the stack before the Next build. The e2e configuration intentionally runs with empty Supabase public values so unauthenticated setup/login and `/demo` flows remain testable in CI.
 
 For a deployed preview or production smoke, set `PLAYWRIGHT_BASE_URL` and run:
 
 ```bash
 PLAYWRIGHT_BASE_URL=https://<deployment-url> npm run e2e:staging
 ```
+
+Authenticated staging smoke is optional because it needs a real test user session. When available, save Playwright storage state to `tests/.auth/storage-state.json`, set `PLAYWRIGHT_STORAGE_STATE=tests/.auth/storage-state.json`, and run `npm run e2e:staging` against the deployment URL. Cover `/`, `/search`, `/library`, `/recommendations`, `/insights`, and `/settings`.
 
 Manual production smoke test:
 

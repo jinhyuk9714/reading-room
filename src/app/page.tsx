@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, CalendarDays, CheckCircle2, Plus } from "lucide-react";
+import { BarChart3, CalendarDays, CheckCircle2, Plus, Target } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DemoReadingRoom } from "@/components/demo-reading-room";
@@ -9,7 +9,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { MetricStrip } from "@/components/ui/metric-strip";
 import { PageHeader } from "@/components/ui/page-header";
 import { hasSupabaseEnv } from "@/lib/env";
-import { getReadingRoom } from "@/lib/library/queries";
+import { getReaderPreferences, getReadingRoom } from "@/lib/library/queries";
+import { buildReadingGoalProgress } from "@/lib/reading/goals";
 import type { ReadingLog } from "@/lib/reading/types";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils";
@@ -28,7 +29,11 @@ export default async function Home() {
     redirect("/login");
   }
 
-  const { items, logs, summary } = await getReadingRoom(user.id);
+  const [{ items, logs, summary }, preferences] = await Promise.all([
+    getReadingRoom(user.id),
+    getReaderPreferences(user.id),
+  ]);
+  const goalProgress = buildReadingGoalProgress({ items, logs, preferences });
   const currentlyReading = summary.currentlyReading.slice(0, 4);
   const primaryBook = currentlyReading[0];
   const wantToRead = items
@@ -60,16 +65,22 @@ export default async function Home() {
         <MetricStrip
           items={[
             {
-              label: "이번 주",
-              value: `${summary.weeklyPages}쪽`,
-              detail: "최근 7일",
+              label: "오늘 목표",
+              value: `${goalProgress.dailyPages}/${goalProgress.dailyPageGoal}쪽`,
+              detail: `${goalProgress.dailyPercent}% 진행`,
+              icon: <Target className="size-4" />,
+            },
+            {
+              label: "주간 목표",
+              value: `${goalProgress.weeklySessions}/${goalProgress.weeklySessionGoal}회`,
+              detail: `${goalProgress.weeklyPages}쪽 · ${goalProgress.weeklySessionPercent}%`,
               icon: <CalendarDays className="size-4" />,
             },
             {
               label: "연속 기록",
               value: `${streakDays}일`,
               detail: streakDays > 0 ? "오늘 기준" : "이번 주 기록 없음",
-              icon: <BookOpen className="size-4" />,
+              icon: <BarChart3 className="size-4" />,
             },
             {
               label: "완독",
@@ -82,7 +93,7 @@ export default async function Home() {
               value: `${summary.activeCount}권`,
               detail:
                 summary.pausedCount > 0 ? `멈춘 책 ${summary.pausedCount}권` : "진행 중",
-              icon: <BarChart3 className="size-4" />,
+              icon: <CheckCircle2 className="size-4" />,
             },
           ]}
         />
@@ -145,6 +156,27 @@ export default async function Home() {
         <section className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
           <div className="rounded-md border border-[var(--color-line)] bg-white/35 p-3">
             <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">오늘 기록 안 한 책</h2>
+              <Link
+                className="text-sm font-medium text-[var(--color-forest)] hover:underline"
+                href="/settings"
+              >
+                목표 설정
+              </Link>
+            </div>
+            {goalProgress.unloggedToday.length === 0 ? (
+              <EmptyState title="오늘의 진행 기록이 채워졌습니다." />
+            ) : (
+              <div className="space-y-2">
+                {goalProgress.unloggedToday.slice(0, 4).map((item) => (
+                  <BookCard compact item={item} key={item.id} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-md border border-[var(--color-line)] bg-white/35 p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold">추천</h2>
               <Link
                 className="text-sm font-medium text-[var(--color-forest)] hover:underline"
@@ -158,7 +190,7 @@ export default async function Home() {
             </p>
           </div>
 
-          <div className="rounded-md border border-[var(--color-line)] bg-white/35 p-3">
+          <div className="rounded-md border border-[var(--color-line)] bg-white/35 p-3 lg:col-span-2">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold">최근 메모</h2>
               <Link

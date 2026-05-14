@@ -4,6 +4,7 @@ import {
   getRecommendations,
   recommendationQueryFromIntent,
 } from "@/lib/recommendations/recommendations";
+import { defaultReaderPreferences } from "@/lib/reader-preferences";
 import type {
   RecommendationEventSignal,
   RecommendationIntent,
@@ -12,6 +13,13 @@ import type {
 import { createClient } from "@/lib/supabase/server";
 
 type AuthenticatedSupabase = Awaited<ReturnType<typeof createClient>>;
+
+type PreferenceIntentRow = {
+  daily_page_goal: number | null;
+  default_log_mode: string | null;
+  favorite_subjects: string[] | null;
+  blocked_subjects: string[] | null;
+};
 
 async function getAuthenticatedSupabase() {
   try {
@@ -64,6 +72,9 @@ function parseIntent(value: unknown): RecommendationIntent | undefined {
     ...(Array.isArray(record.genres)
       ? { genres: parseStringArray(record.genres) }
       : {}),
+    ...(Array.isArray(record.blockedSubjects)
+      ? { blockedSubjects: parseStringArray(record.blockedSubjects) }
+      : {}),
     ...(typeof record.purpose === "string" ? { purpose: record.purpose } : {}),
     ...((typeof record.daily_page_goal === "number" &&
       Number.isFinite(record.daily_page_goal))
@@ -72,6 +83,35 @@ function parseIntent(value: unknown): RecommendationIntent | undefined {
     ...(typeof record.default_log_mode === "string"
       ? { default_log_mode: record.default_log_mode }
       : {}),
+  };
+}
+
+function mergeIntent(
+  preferenceIntent: RecommendationIntent,
+  requestIntent: RecommendationIntent | undefined,
+): RecommendationIntent {
+  if (!requestIntent) {
+    return preferenceIntent;
+  }
+
+  const genres = [
+    ...(preferenceIntent.genres ?? []),
+    ...(requestIntent.genres ?? []),
+  ].filter((genre, index, values) => values.indexOf(genre) === index);
+  const blockedSubjects = [
+    ...(preferenceIntent.blockedSubjects ?? []),
+    ...(requestIntent.blockedSubjects ?? []),
+  ].filter((subject, index, values) => values.indexOf(subject) === index);
+  const purpose = [preferenceIntent.purpose, requestIntent.purpose]
+    .filter(Boolean)
+    .join(" · ");
+
+  return {
+    ...preferenceIntent,
+    ...requestIntent,
+    ...(genres.length > 0 ? { genres } : {}),
+    ...(blockedSubjects.length > 0 ? { blockedSubjects } : {}),
+    ...(purpose ? { purpose } : {}),
   };
 }
 
@@ -116,6 +156,45 @@ async function getRecommendationEventSignals(
   }
 }
 
+async function getRecommendationPreferenceIntent(
+  supabase: AuthenticatedSupabase,
+  userId: string,
+): Promise<RecommendationIntent> {
+  try {
+    const { data, error } = await supabase
+      .from("reader_preferences")
+      .select(
+        "daily_page_goal,default_log_mode,favorite_subjects,blocked_subjects",
+      )
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return {
+        daily_page_goal: defaultReaderPreferences.dailyPageGoal,
+        default_log_mode: defaultReaderPreferences.defaultLogMode,
+      };
+    }
+
+    const row = data as PreferenceIntentRow;
+    return {
+      daily_page_goal:
+        typeof row.daily_page_goal === "number"
+          ? row.daily_page_goal
+          : defaultReaderPreferences.dailyPageGoal,
+      default_log_mode:
+        row.default_log_mode === "percent" ? "percent" : "page",
+      genres: row.favorite_subjects ?? [],
+      blockedSubjects: row.blocked_subjects ?? [],
+    };
+  } catch {
+    return {
+      daily_page_goal: defaultReaderPreferences.dailyPageGoal,
+      default_log_mode: defaultReaderPreferences.defaultLogMode,
+    };
+  }
+}
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     query?: unknown;
@@ -129,22 +208,14 @@ export async function POST(request: Request) {
   };
 
   const mode = parseMode(body.mode);
-  const intent = parseIntent(body.intent);
+  const requestIntent = parseIntent(body.intent);
   const legacyQuery = typeof body.query === "string" ? body.query.trim() : "";
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   const hasStructuredMode =
     body.mode === "feed" || body.mode === "purpose" || body.mode === "conversation";
-  const query =
-    legacyQuery ||
-    prompt ||
-    (body.mode === "purpose"
-      ? recommendationQueryFromIntent(intent)
-      : hasStructuredMode && mode === "feed"
-        ? "국내 독서 추천"
-        : "");
   const limit = normalizeLimit(body.limit);
 
-  if (!query) {
+  if (!legacyQuery && !prompt && !hasStructuredMode) {
     return NextResponse.json(
       { error: "Missing recommendation query." },
       { status: 400 },
@@ -155,6 +226,28 @@ export async function POST(request: Request) {
   if (!auth) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+
+  const preferenceIntent = await getRecommendationPreferenceIntent(
+    auth.supabase,
+    auth.user.id,
+  );
+  const intent = mergeIntent(preferenceIntent, requestIntent);
+  const query =
+    legacyQuery ||
+    prompt ||
+    (body.mode === "purpose"
+      ? recommendationQueryFromIntent(intent)
+      : hasStructuredMode && mode === "feed"
+        ? "국내 독서 추천"
+        : "");
+
+  if (!query) {
+    return NextResponse.json(
+      { error: "Missing recommendation query." },
+      { status: 400 },
+    );
+  }
+
   const recommendationEvents = await getRecommendationEventSignals(
     auth.supabase,
     auth.user.id,

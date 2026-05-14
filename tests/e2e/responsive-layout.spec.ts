@@ -9,12 +9,14 @@ import {
 
 const smokePaths = parsePathList(process.env.E2E_SMOKE_PATHS, [
   "/",
+  "/demo",
   "/library",
   "/search",
   "/rankings",
   "/recommendations",
   "/insights",
   "/archive",
+  "/settings",
 ]);
 
 test.describe("responsive layout smoke", () => {

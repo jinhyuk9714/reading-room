@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
 const usesExternalBaseUrl = Boolean(process.env.PLAYWRIGHT_BASE_URL);
+const storageState = process.env.PLAYWRIGHT_STORAGE_STATE || undefined;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -14,6 +15,7 @@ export default defineConfig({
   use: {
     baseURL,
     screenshot: "only-on-failure",
+    storageState,
     trace: "retain-on-failure",
   },
   projects: [
@@ -37,7 +39,7 @@ export default defineConfig({
         command:
           "npm run build && npm run start -- --hostname 127.0.0.1 --port 3000",
         url: baseURL,
-        reuseExistingServer: !process.env.CI,
+        reuseExistingServer: false,
         timeout: 120_000,
         env: {
           NEXT_PUBLIC_SUPABASE_URL: "",

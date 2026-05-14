@@ -16,6 +16,7 @@ import { useMemo, useState } from "react";
 import { RecommendationAddForm } from "@/components/add-book-forms";
 import { BookCover } from "@/components/ui/book-cover";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { InlineNotice } from "@/components/ui/inline-notice";
 import type {
   RecommendationCard,
   RecommendationIntent,
@@ -146,6 +147,7 @@ export function RecommendationDiscovery({
   );
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
 
   const visibleCards = useMemo(
     () => cards.filter((card) => !hiddenKeys.includes(cardKey(card))),
@@ -172,6 +174,7 @@ export function RecommendationDiscovery({
     const nextCard = nextCards[0]?.card;
 
     setPurposeId(nextPurposeId);
+    setRemoteError(null);
     if (nextPurposeId === "feed") {
       setRemoteCards(null);
     }
@@ -243,6 +246,7 @@ export function RecommendationDiscovery({
     previousProviderIds?: string[];
   }) {
     setLoading(true);
+    setRemoteError(null);
     try {
       const response = await fetch("/api/recommendations", {
         method: "POST",
@@ -254,6 +258,7 @@ export function RecommendationDiscovery({
         }),
       });
       if (!response.ok) {
+        setRemoteError("추천을 갱신하지 못했습니다. 잠시 후 다시 시도해주세요.");
         return;
       }
       const body = (await response.json()) as {
@@ -262,7 +267,11 @@ export function RecommendationDiscovery({
       if (body.results?.length) {
         setRemoteCards(body.results);
         setSelectedKey(cardKey(body.results[0]));
+      } else {
+        setRemoteError("조건에 맞는 국내판 후보가 부족합니다. 조건을 조금 넓혀보세요.");
       }
+    } catch {
+      setRemoteError("추천을 갱신하지 못했습니다. 네트워크 상태를 확인해주세요.");
     } finally {
       setLoading(false);
     }
@@ -313,6 +322,7 @@ export function RecommendationDiscovery({
                     : "border-[var(--color-line)] bg-white/50 text-[var(--color-muted)] hover:border-[var(--color-forest)] hover:bg-white",
                 )}
                 key={purpose.id}
+                disabled={loading}
                 onClick={() => selectPurpose(purpose.id)}
                 type="button"
               >
@@ -348,6 +358,9 @@ export function RecommendationDiscovery({
           {usingFallback ? "검색 기반 피드" : "AI 조정 피드"} ·{" "}
           {visibleCards.length}권 정리됨{loading ? " · 갱신 중" : ""}
         </p>
+        {remoteError ? (
+          <InlineNotice tone="error">{remoteError}</InlineNotice>
+        ) : null}
       </aside>
 
       <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper)] p-4 shadow-sm md:p-5">
@@ -408,6 +421,7 @@ export function RecommendationDiscovery({
                 <button
                   className="rounded-md border border-[var(--color-line)] bg-white/60 px-3 py-2 text-left text-sm font-medium transition hover:border-[var(--color-forest)] hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-forest)]"
                   key={action.label}
+                  disabled={loading}
                   onClick={() => {
                     setDraft(action.prompt);
                     setCopied(false);
@@ -432,6 +446,7 @@ export function RecommendationDiscovery({
             </label>
             <Button
               className="mt-3 w-full"
+              disabled={loading}
               onClick={copyDraft}
               type="button"
               variant="secondary"
@@ -455,7 +470,7 @@ export function RecommendationDiscovery({
 }
 
 async function recordRecommendationEvent(
-  eventType: "opened" | "dismissed",
+  eventType: "opened" | "dismissed" | "hidden" | "excluded",
   card: ExtendedRecommendationCard,
   metadata: Record<string, string>,
 ) {

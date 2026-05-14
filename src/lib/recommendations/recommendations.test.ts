@@ -473,7 +473,7 @@ describe("getRecommendations", () => {
       limit: 1,
       intent: {
         daily_page_goal: 20,
-        default_log_mode: "pages",
+        default_log_mode: "page",
       },
       recommendationEvents: [
         {
@@ -513,6 +513,52 @@ describe("getRecommendations", () => {
     expect(results[0]).toMatchObject({
       providerId: "related-short",
       reasonTags: ["검색 기반", "취향 반영", "짧게 읽기", "국내판 확인"],
+    });
+  });
+
+  it("excludes candidates matching blocked reader preference keywords", async () => {
+    delete process.env.OPENAI_API_KEY;
+    searchBooksMock.mockResolvedValueOnce([
+      {
+        provider: "kakao",
+        providerId: "blocked-horror",
+        title: "밤의 공포 소설",
+        subtitle: null,
+        authors: ["작가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 240,
+        publishedYear: 2023,
+        language: "kor",
+        description: "공포와 미스터리",
+        raw: {},
+      },
+      {
+        provider: "naver",
+        providerId: "calm-essay",
+        title: "잔잔한 산책",
+        subtitle: null,
+        authors: ["산책가"],
+        isbn10: null,
+        isbn13: null,
+        coverUrl: null,
+        pageCount: 180,
+        publishedYear: 2024,
+        language: "ko",
+        description: "차분한 에세이",
+        raw: {},
+      },
+    ]);
+
+    const results = await getRecommendations("오늘 읽을 책", {
+      limit: 1,
+      intent: { blockedSubjects: ["공포"] },
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      providerId: "calm-essay",
     });
   });
 

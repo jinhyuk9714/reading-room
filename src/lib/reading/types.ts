@@ -85,6 +85,29 @@ export type ReadingInsightSummary = {
   moodCounts: CountSummary[];
 };
 
+export type ReaderLogMode = "page" | "percent";
+
+export type ReaderPreferences = {
+  dailyPageGoal: number;
+  weeklySessionGoal: number;
+  defaultLogMode: ReaderLogMode;
+  favoriteSubjects: string[];
+  blockedSubjects: string[];
+};
+
+export type ReaderPreferenceDraft = ReaderPreferences;
+
+export type ReadingGoalProgress = {
+  dailyPageGoal: number;
+  weeklySessionGoal: number;
+  dailyPages: number;
+  weeklyPages: number;
+  weeklySessions: number;
+  dailyPercent: number;
+  weeklySessionPercent: number;
+  unloggedToday: LibraryItemWithBook[];
+};
+
 export type LibraryFilter = {
   status?: ReadingStatus | "all";
   author?: string;

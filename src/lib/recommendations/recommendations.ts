@@ -35,6 +35,7 @@ type RecommendationContext = {
   mode: RecommendationMode;
   intent?: RecommendationIntent;
   blockedProviderIds: Set<string>;
+  blockedTerms: Set<string>;
   librarySignals: LibrarySignals;
   positiveSignals: PositiveRecommendationSignals;
 };
@@ -258,6 +259,11 @@ function buildContext(
     authors: new Set(),
     terms: new Set(),
   };
+  const blockedTerms = new Set(
+    (options.intent?.blockedSubjects ?? [])
+      .map(comparableText)
+      .filter(Boolean),
+  );
 
   addProviderIds(blockedProviderIds, providerIdsFromQuery(query));
   addProviderIds(blockedProviderIds, options.previousProviderIds);
@@ -277,6 +283,7 @@ function buildContext(
     mode: normalizeMode(options.mode ?? modeFromQuery(query)),
     intent: options.intent,
     blockedProviderIds,
+    blockedTerms,
     librarySignals,
     positiveSignals,
   };
@@ -296,6 +303,25 @@ function isExistingLibraryTitle(
   librarySignals: LibrarySignals,
 ): boolean {
   return librarySignals.titles.has(comparableText(book.title));
+}
+
+function isBlockedByPreference(
+  book: Pick<BookSearchResult, "title" | "authors" | "description">,
+  blockedTerms: ReadonlySet<string>,
+): boolean {
+  if (blockedTerms.size === 0) {
+    return false;
+  }
+
+  const haystack = comparableText(
+    [book.title, ...book.authors, book.description ?? ""].join(" "),
+  );
+  for (const term of blockedTerms) {
+    if (haystack.includes(term)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function intentWord(
@@ -491,7 +517,7 @@ function prefersShortPace(intent: RecommendationIntent | undefined): boolean {
     (typeof dailyPageGoal === "number" &&
       Number.isFinite(dailyPageGoal) &&
       dailyPageGoal <= 50) ||
-    intent?.default_log_mode === "pages"
+    intent?.default_log_mode === "page"
   );
 }
 
@@ -667,6 +693,7 @@ async function revalidateKoreanCatalogCards(
       if (
         seen.has(key) ||
         isBlockedProviderId(book, context.blockedProviderIds) ||
+        isBlockedByPreference(book, context.blockedTerms) ||
         isExistingLibraryTitle(book, context.librarySignals)
       ) {
         continue;
@@ -718,6 +745,7 @@ async function fallbackRecommendations(
       if (
         seen.has(key) ||
         isBlockedProviderId(book, context.blockedProviderIds) ||
+        isBlockedByPreference(book, context.blockedTerms) ||
         isExistingLibraryTitle(book, context.librarySignals)
       ) {
         continue;
