@@ -2,11 +2,31 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { hasSupabaseEnv } from "@/lib/env";
 
+const publicRoutePrefixes = ["/login", "/demo", "/auth/callback"];
+
+function isPublicRoute(pathname: string) {
+  return publicRoutePrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+function hasSupabaseAuthCookie(request: NextRequest) {
+  return request
+    .cookies
+    .getAll()
+    .some(({ name }) => name.startsWith("sb-") && name.includes("auth-token"));
+}
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
 
-  if (!hasSupabaseEnv()) {
+  if (!hasSupabaseEnv() || isPublicRoute(pathname) || pathname.startsWith("/api/")) {
     return response;
+  }
+
+  if (!hasSupabaseAuthCookie(request)) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   const supabase = createServerClient(

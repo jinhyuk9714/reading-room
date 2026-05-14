@@ -120,6 +120,7 @@ export default async function InsightsPage() {
               <Link
                 className="text-sm font-medium text-[var(--color-forest)] hover:underline"
                 href="/"
+                prefetch={false}
               >
                 독서장
               </Link>

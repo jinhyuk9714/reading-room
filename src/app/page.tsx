@@ -137,6 +137,7 @@ export default async function Home() {
               <Link
                 className="text-sm font-medium text-[var(--color-forest)] hover:underline"
                 href="/library#want_to_read"
+                prefetch={false}
               >
                 전체
               </Link>
@@ -160,6 +161,7 @@ export default async function Home() {
               <Link
                 className="text-sm font-medium text-[var(--color-forest)] hover:underline"
                 href="/settings"
+                prefetch={false}
               >
                 목표 설정
               </Link>
@@ -181,6 +183,7 @@ export default async function Home() {
               <Link
                 className="text-sm font-medium text-[var(--color-forest)] hover:underline"
                 href="/recommendations"
+                prefetch={false}
               >
                 발견으로 이동
               </Link>
@@ -196,6 +199,7 @@ export default async function Home() {
               <Link
                 className="text-sm font-medium text-[var(--color-forest)] hover:underline"
                 href="/insights"
+                prefetch={false}
               >
                 흐름 보기
               </Link>

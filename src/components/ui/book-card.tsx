@@ -34,6 +34,7 @@ export function BookCard({ item, compact = false, meta }: BookCardProps) {
         compact ? "h-full" : "",
       )}
       href={`/library/${item.id}`}
+      prefetch={false}
     >
       <div className="flex gap-3">
         <BookCover

@@ -35,7 +35,7 @@ export function AppShell({ activeHref, children }: AppShellProps) {
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col md:flex-row">
         <aside className="border-b border-[var(--color-line)] bg-[var(--color-paper)] md:flex md:w-56 md:flex-col md:border-b-0 md:border-r">
           <div className="flex items-center justify-between gap-3 px-4 py-3 md:block md:px-4 md:py-5">
-            <Link className="block" href="/">
+            <Link className="block" href="/" prefetch={false}>
               <p className="text-sm font-semibold leading-none">Reading Room</p>
               <p className="mt-1 text-xs text-[var(--color-muted)]">
                 개인 독서장
@@ -67,6 +67,7 @@ export function AppShell({ activeHref, children }: AppShellProps) {
                   )}
                   href={item.href}
                   key={item.href}
+                  prefetch={false}
                 >
                   <Icon className="size-4" />
                   {item.label}

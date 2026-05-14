@@ -63,7 +63,7 @@ export default async function ArchivePage() {
                   className="rounded-md border border-[var(--color-line)] bg-white/70 p-3"
                   key={item.id}
                 >
-                  <Link href={`/library/${item.id}`}>
+                  <Link href={`/library/${item.id}`} prefetch={false}>
                     <BookCover
                       authors={item.book.authors}
                       className="mb-3 w-full"
