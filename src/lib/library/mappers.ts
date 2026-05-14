@@ -38,9 +38,9 @@ export type ReadingLogRow = {
   current_percent: number | null;
   pages_read: number | null;
   note: string | null;
-  quote: string | null;
-  tags: string[] | null;
-  mood: string | null;
+  quote?: string | null;
+  tags?: string[] | null;
+  mood?: string | null;
 };
 
 export function mapLibraryItem(row: LibraryItemRow): LibraryItemWithBook {

@@ -47,8 +47,116 @@ type ReaderPreferenceRow = {
   blocked_subjects: string[] | null;
 };
 
+const READING_LOG_COLUMNS =
+  "id,user_id,library_item_id,logged_at,current_page,current_percent,pages_read,note,quote,tags,mood";
+const LEGACY_READING_LOG_COLUMNS =
+  "id,user_id,library_item_id,logged_at,current_page,current_percent,pages_read,note";
+const LIBRARY_ITEM_COLUMNS =
+  "id,user_id,status,current_page,current_percent,started_on,finished_on,rating,reflection,custom_title,custom_authors,custom_page_count,books(id,title,subtitle,authors,cover_url,page_count)";
+const LEGACY_LIBRARY_ITEM_COLUMNS =
+  "id,user_id,status,current_page,current_percent,started_on,finished_on,rating,reflection,books(id,title,subtitle,authors,cover_url,page_count)";
+
 function rankingBookFromRow(row: RankingItemRow) {
   return Array.isArray(row.books) ? row.books[0] : row.books;
+}
+
+function canRetryLegacySelect(error: { code?: string; message?: string } | null) {
+  return (
+    error?.code === "42703" ||
+    error?.code === "42P01" ||
+    /column .* does not exist|relation .* does not exist/i.test(
+      error?.message ?? "",
+    )
+  );
+}
+
+async function getReadingLogs(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  options: { itemId?: string; limit?: number } = {},
+) {
+  let query = supabase
+    .from("reading_logs")
+    .select(READING_LOG_COLUMNS)
+    .eq("user_id", userId);
+
+  if (options.itemId) {
+    query = query.eq("library_item_id", options.itemId);
+  }
+
+  query = query.order("logged_at", { ascending: false });
+
+  if (options.limit) {
+    query = query.limit(options.limit);
+  }
+
+  const result = await query;
+
+  if (!result.error || !canRetryLegacySelect(result.error)) {
+    return result;
+  }
+
+  let legacyQuery = supabase
+    .from("reading_logs")
+    .select(LEGACY_READING_LOG_COLUMNS)
+    .eq("user_id", userId);
+
+  if (options.itemId) {
+    legacyQuery = legacyQuery.eq("library_item_id", options.itemId);
+  }
+
+  legacyQuery = legacyQuery.order("logged_at", { ascending: false });
+
+  if (options.limit) {
+    legacyQuery = legacyQuery.limit(options.limit);
+  }
+
+  return legacyQuery;
+}
+
+async function getLibraryItems(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+) {
+  const result = await supabase
+    .from("library_items")
+    .select(LIBRARY_ITEM_COLUMNS)
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+
+  if (!result.error || !canRetryLegacySelect(result.error)) {
+    return result;
+  }
+
+  return supabase
+    .from("library_items")
+    .select(LEGACY_LIBRARY_ITEM_COLUMNS)
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+}
+
+async function getLibraryItem(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  itemId: string,
+) {
+  const result = await supabase
+    .from("library_items")
+    .select(LIBRARY_ITEM_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", itemId)
+    .single();
+
+  if (!result.error || !canRetryLegacySelect(result.error)) {
+    return result;
+  }
+
+  return supabase
+    .from("library_items")
+    .select(LEGACY_LIBRARY_ITEM_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", itemId)
+    .single();
 }
 
 export async function getReadingRoom(userId: string) {
@@ -56,21 +164,8 @@ export async function getReadingRoom(userId: string) {
 
   const [{ data: itemRows, error: itemError }, { data: logRows, error: logError }] =
     await Promise.all([
-      supabase
-        .from("library_items")
-        .select(
-          "id,user_id,status,current_page,current_percent,started_on,finished_on,rating,reflection,custom_title,custom_authors,custom_page_count,books(id,title,subtitle,authors,cover_url,page_count)",
-        )
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false }),
-      supabase
-        .from("reading_logs")
-        .select(
-          "id,user_id,library_item_id,logged_at,current_page,current_percent,pages_read,note,quote,tags,mood",
-        )
-        .eq("user_id", userId)
-        .order("logged_at", { ascending: false })
-        .limit(40),
+      getLibraryItems(supabase, userId),
+      getReadingLogs(supabase, userId, { limit: 40 }),
     ]);
 
   if (itemError) {
@@ -103,7 +198,7 @@ export async function getReaderPreferences(
     .maybeSingle();
 
   if (error) {
-    throw new Error(sanitizeDatabaseError(error));
+    return defaultReaderPreferences;
   }
 
   return mapReaderPreferences(data as ReaderPreferenceRow | null);
@@ -112,27 +207,19 @@ export async function getReaderPreferences(
 export async function getLibraryItemDetail(userId: string, itemId: string) {
   const supabase = await createClient();
 
-  const { data: itemRow, error: itemError } = await supabase
-    .from("library_items")
-    .select(
-      "id,user_id,status,current_page,current_percent,started_on,finished_on,rating,reflection,custom_title,custom_authors,custom_page_count,books(id,title,subtitle,authors,cover_url,page_count)",
-    )
-    .eq("user_id", userId)
-    .eq("id", itemId)
-    .single();
+  const { data: itemRow, error: itemError } = await getLibraryItem(
+    supabase,
+    userId,
+    itemId,
+  );
 
   if (itemError || !itemRow) {
     notFound();
   }
 
-  const { data: logRows, error: logError } = await supabase
-    .from("reading_logs")
-    .select(
-      "id,user_id,library_item_id,logged_at,current_page,current_percent,pages_read,note,quote,tags,mood",
-    )
-    .eq("user_id", userId)
-    .eq("library_item_id", itemId)
-    .order("logged_at", { ascending: false });
+  const { data: logRows, error: logError } = await getReadingLogs(supabase, userId, {
+    itemId,
+  });
 
   if (logError) {
     throw new Error(sanitizeDatabaseError(logError));
