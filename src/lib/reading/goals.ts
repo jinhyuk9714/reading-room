@@ -65,12 +65,12 @@ function dayKey(date: Date): string {
 
 function startOfDay(date: Date): Date {
   const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
+  copy.setUTCHours(0, 0, 0, 0);
   return copy;
 }
 
 function addDays(date: Date, days: number): Date {
   const copy = new Date(date);
-  copy.setDate(copy.getDate() + days);
+  copy.setUTCDate(copy.getUTCDate() + days);
   return copy;
 }

@@ -122,7 +122,7 @@ describe("reading insights", () => {
         finished: 1,
         abandoned: 0,
       },
-      weeklyPages: 60,
+      weeklyPages: 65,
       recentStreakDays: 2,
       averagePagesPerActiveDay: 16.25,
       pace: [
